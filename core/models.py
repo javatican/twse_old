@@ -249,7 +249,7 @@ class Twse_Trading_Downloaded(Model):
     is_processed = models.BooleanField(default=False, verbose_name=_('is_processed')) 
     data_available = models.BooleanField(default=True, verbose_name=_('data_available')) 
     objects = TwseTradingDownloadedManager() 
-#===      
+
 class TwseSummaryPriceDownloadedMixin(object):
     def index_not_processed(self):
         return self.filter(index_processed=False, data_available=True)
@@ -334,7 +334,10 @@ class Index_Change_Info(Model):
     trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
     
     objects= IndexChangeInfoManager()
-
+#
+    class Meta:
+        unique_together = ("twse_index", "trading_date")
+        
 class MarketSummaryTypeMixin(object):
     pass
     
@@ -371,6 +374,11 @@ class Market_Summary(Model):
     trade_transaction = models.DecimalField(max_digits=17, decimal_places=0, default=0, verbose_name=_('trade_transaction')) 
     trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
     
+    objects= MarketSummaryManager()
+ #
+    class Meta:
+        unique_together = ("summary_type", "trading_date")
+          
 class StockUpDownStatsMixin(object):
     def by_date(self, trading_date):
         return self.filter(trading_date=trading_date)
@@ -397,5 +405,5 @@ class Stock_Up_Down_Stats(Model):
     stock_unmatch = models.PositiveIntegerField(default=0, verbose_name=_('stock_unmatch')) 
     total_na = models.PositiveIntegerField(default=0, verbose_name=_('total_na')) 
     stock_na = models.PositiveIntegerField(default=0, verbose_name=_('stock_na'))  
-    trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
+    trading_date = models.DateField(auto_now_add=False, unique=True, null=False, verbose_name=_('trading_date')) 
     objects= StockUpDownStatsManager()

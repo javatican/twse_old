@@ -683,7 +683,7 @@ def twse_daily_trading_process_job(q_date=None):
                 ob.is_processed = True
                 ob.save()
         except Twse_Trading_Downloaded.DoesNotExist:
-            job.error_message = 'Data are not yet downloaded or have been processed'
+            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
             raise Exception(job.error_message)
         transaction.commit()
         job.success()
@@ -705,8 +705,8 @@ def _process_day_trading(qdate):
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr', class_='basic2')
-        logger.info("There are %s trading records in file" % len(rows))
-        for row in rows:
+        logger.info("There are %s trading records in file" % (len(rows)-1))
+        for row in rows[1:]:
             i = 0
             dt_item = None
             for td_element in row.find_all('td', recursive=False):
@@ -872,6 +872,8 @@ def _get_market_summary_and_day_price(qdate):
     else:
         return True
 
+_allow_partially_run = False
+
 def twse_daily_price_process_job(q_date=None):
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
@@ -894,8 +896,8 @@ def twse_daily_price_process_job(q_date=None):
                     ob.price_processed = True
                     ob.save()
             except Twse_Summary_Price_Downloaded.DoesNotExist:               
-                job.error_message = 'Data are not yet downloaded or have been processed'
-                raise Exception(job.error_message)
+                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+                if not _allow_partially_run: raise Exception(job.error_message)
         transaction.commit()
         job.success()
     except: 
@@ -1011,8 +1013,8 @@ def twse_daily_index_process_job(q_date=None):
                 ob.index_processed = True
                 ob.save()
         except Twse_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data are not yet downloaded or have been processed'
-            raise Exception(job.error_message)     
+            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+            if not _allow_partially_run: raise Exception(job.error_message)
         transaction.commit()
         job.success()
     except: 
@@ -1079,8 +1081,8 @@ def twse_daily_tri_index_process_job(q_date=None):
                 ob.tri_index_processed = True
                 ob.save()
         except Twse_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data are not yet downloaded or have been processed'
-            raise Exception(job.error_message)     
+            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+            if not _allow_partially_run: raise Exception(job.error_message)   
         transaction.commit()
         job.success()
     except: 
@@ -1147,8 +1149,8 @@ def twse_daily_summary_process_job(q_date=None):
                 ob.summary_processed = True
                 ob.save()
         except Twse_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data are not yet downloaded or have been processed'
-            raise Exception(job.error_message)     
+            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+            if not _allow_partially_run: raise Exception(job.error_message)
         transaction.commit()
         job.success()
     except: 
@@ -1208,8 +1210,8 @@ def twse_daily_updown_process_job(q_date=None):
                 ob.updown_processed = True
                 ob.save()
         except Twse_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data are not yet downloaded or have been processed'
-            raise Exception(job.error_message)     
+            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+            if not _allow_partially_run: raise Exception(job.error_message)  
         transaction.commit()
         job.success()
     except: 
