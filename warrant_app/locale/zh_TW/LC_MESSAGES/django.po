@@ -1,0 +1,187 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2015-01-20 00:52+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: core/models.py:8
+msgid "cron_job_success"
+msgstr "cron工作成功"
+
+#: core/models.py:9
+msgid "cron_job_failed"
+msgstr "cron工作失敗"
+
+#: core/models.py:10
+msgid "cron_job_title"
+msgstr "cron工作名稱"
+
+#: core/models.py:11
+msgid "cron_job_exec_time"
+msgstr "cron工作執行時間"
+
+#: core/models.py:12
+msgid "cron_job_status"
+msgstr "cron工作狀態"
+
+#: core/models.py:30
+msgid "stock_type_1"
+msgstr "上市"
+
+#: core/models.py:31
+msgid "stock_type_2"
+msgstr "上櫃"
+
+#: core/models.py:42 core/models.py:99
+msgid "stock_symbol"
+msgstr "股票代碼"
+
+#: core/models.py:43
+msgid "stock_short_name"
+msgstr "股票名稱"
+
+#: core/models.py:44
+msgid "stock_name"
+msgstr "公司名稱"
+
+#: core/models.py:45
+msgid "stock_type"
+msgstr "市場別"
+
+#: core/models.py:46
+msgid "market_category"
+msgstr "產業別"
+
+#: core/models.py:47
+msgid "notes"
+msgstr "備註"
+
+#: core/models.py:48 core/models.py:83
+msgid "missing_info"
+msgstr "基本資料尚缺"
+
+#: core/models.py:65
+msgid "European"
+msgstr "歐式"
+
+#: core/models.py:66
+msgid "American"
+msgstr "美式"
+
+#: core/models.py:68
+msgid "call"
+msgstr "認購"
+
+#: core/models.py:69
+msgid "put"
+msgstr "認售"
+
+#: core/models.py:70 core/models.py:100
+msgid "warrant_symbol"
+msgstr "權証代碼"
+
+#: core/models.py:71
+msgid "warrant_name"
+msgstr "權証名稱"
+
+#: core/models.py:72
+msgid "target_stock"
+msgstr "標的證券"
+
+#: core/models.py:73
+msgid "target_symbol"
+msgstr "標的證券代碼"
+
+#: core/models.py:74
+msgid "exercise_style"
+msgstr "美式或歐式"
+
+#: core/models.py:75
+msgid "classification"
+msgstr "認購或認售"
+
+#: core/models.py:76
+msgid "issuer"
+msgstr "發行人"
+
+#: core/models.py:77
+msgid "listed_date"
+msgstr "上市日期"
+
+#: core/models.py:78
+msgid "last_trading_date"
+msgstr "最後交易日"
+
+#: core/models.py:79
+msgid "expiration_date"
+msgstr "到期日"
+
+#: core/models.py:80
+msgid "issued_volume"
+msgstr "發行數量(千單位)"
+
+#: core/models.py:81
+msgid "exercise_ratio"
+msgstr "標的履約比例(每千)"
+
+#: core/models.py:82
+msgid "strike_price"
+msgstr "履約價格"
+
+#: core/models.py:101
+msgid "proprietary_buy"
+msgstr "自行買入"
+
+#: core/models.py:102
+msgid "proprietary_sell"
+msgstr "自行賣出"
+
+#: core/models.py:103
+msgid "proprietary_diff"
+msgstr "自行買賣超"
+
+#: core/models.py:104
+msgid "hedge_buy"
+msgstr "避險買入"
+
+#: core/models.py:105
+msgid "hedge_sell"
+msgstr "避險賣出"
+
+#: core/models.py:106
+msgid "hedge_diff"
+msgstr "避險買賣超"
+
+#: core/models.py:107 core/models.py:127
+msgid "trading_date"
+msgstr "交易日期"
+
+#: core/models.py:128
+msgid "is_processed"
+msgstr "資料處理否"
+
+#: core/models.py:129
+msgid "data_available"
+msgstr "有資料"
+
+#: core/views.py:20 core/views.py:39
+msgid "Job execution finished!"
+msgstr "工作執行完成!"
+
+#: core/views.py:22 core/views.py:41
+msgid "Job execution failed!"
+msgstr "工作執行失敗!"

@@ -1,0 +1,12 @@
+*.pyc
+*.log
+twse_download_a/*
+twse_download_b/*
+twse_download_c/*
+twse_download_d/*
+twse_download0/*
+twse_download1/*
+twse_download2/*
+twse_download3/*
+twse_download4/*
+twse_download5/*
