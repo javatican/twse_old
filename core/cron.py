@@ -1,16 +1,16 @@
 # coding=utf8
+from bs4 import BeautifulSoup
 import codecs
 import datetime
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 import logging
 import os
 import re
-import sys
-import time
- 
-from bs4 import BeautifulSoup
-from django.db import transaction
 from requests import Session
 import requests
+import sys
+import time
 
 from core.models import Cron_Job_Log, Twse_Trading_Downloaded, Twse_Trading, \
     Warrant_Item, Stock_Item, get_stock_item_type, get_warrant_exercise_style, \
@@ -22,6 +22,10 @@ from warrant_app.settings import TWSE_DOWNLOAD_1, TWSE_DOWNLOAD_2, \
     TWSE_PRICE_DOWNLOAD_URL, TWSE_DOWNLOAD_0, TWSE_DOWNLOAD_A, \
     TWSE_DOWNLOAD_B, TWSE_DOWNLOAD_C, TWSE_DOWNLOAD_D
 from warrant_app.utils import dateutil
+from warrant_app.utils.black_scholes import option_price_implied_volatility_call_black_scholes_newton, \
+    option_price_implied_volatility_put_black_scholes_newton, \
+    option_price_delta_call_black_scholes, option_price_delta_put_black_scholes, \
+    option_price_call_black_scholes, option_price_put_black_scholes
 from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year
 from warrant_app.utils.logutil import log_message
 from warrant_app.utils.stringutil import is_float
@@ -1271,3 +1275,39 @@ def _process_day_updown_stats(qdate):
         dt_item.stock_na = dt_data
         dt_item.save()
     return True
+
+
+def test_black_scholes_job(warrant_symbol, qdate):
+    # get the warrant_item and trading_warrant and target_stock model instances
+    try:
+        warrant_item= Warrant_Item.objects.select_related('target_stock').get(symbol=warrant_symbol)
+        trading_warrant_item = Twse_Trading_Warrant.objects.get(warrant_symbol=warrant_item, trading_date=qdate)
+        trading_item = Twse_Trading.objects.get(stock_symbol=warrant_item.target_stock, trading_date=qdate)
+        # or use closing_price
+        exercise_ratio = warrant_item.exercise_ratio*1.0/1000.0
+        spot_price = float(trading_item.last_best_bid_price)
+        strike_price = float(warrant_item.strike_price)
+        interest_rate= 0.0136
+        expiration_date = warrant_item.expiration_date
+        diff = expiration_date - qdate 
+        time_to_maturity = float(diff.days)/365.0
+        # or use closing_price
+        option_price = float(trading_warrant_item.last_best_bid_price)/exercise_ratio
+        if warrant_item.is_call():
+            sigma = option_price_implied_volatility_call_black_scholes_newton(spot_price, strike_price, interest_rate, time_to_maturity,  
+                                                              option_price)
+            delta = option_price_delta_call_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)*exercise_ratio
+            warrant_price = option_price_call_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)
+        else:
+            sigma = option_price_implied_volatility_put_black_scholes_newton(spot_price, strike_price, interest_rate, time_to_maturity,  
+                                                              option_price)
+            delta = option_price_delta_put_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)*exercise_ratio
+            warrant_price = option_price_put_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)
+        print "Warrant item %s: spot_price = %s, strike_price= %s, option_price= %s" % (warrant_symbol,spot_price,strike_price, option_price)
+        print "Warrant item %s: expiration_date = %s, time_to_maturity= %s" % (warrant_symbol,expiration_date,time_to_maturity)
+        print "Warrant item %s: intrinsic volatility= %s, delta= %s" % (warrant_symbol,sigma,delta)
+        print "Warrant item %s: warrant price= %s" % (warrant_symbol,warrant_price)
+    except ObjectDoesNotExist:
+        logger.warning("Warrant symbol %s not found" % warrant_symbol)
+        
+    

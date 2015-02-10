@@ -76,13 +76,17 @@ class WarrantItemManager(models.Manager, WarrantItemMixin):
     def stocks_has_warrants(self):
         return self.filter(data_ok=True).distinct().values_list('target_stock__symbol', flat=True)
     
+_CALL = '1'
+_PUT = '2' 
 _EXERCISE_STYLE_CHOICES = (
         ('1', _('European')),
         ('2', _('American')),)
 _CLASSIFICATION_CHOICES = (
-        ('1', _('call')),
-        ('2', _('put')),)
-    
+        (_CALL, _('call')),
+        (_PUT, _('put')),)
+ 
+CLASSIFICATION_CODE = {'CALL':_CALL, 'PUT': _PUT}
+
 def get_warrant_exercise_style(exercise_style):
     if exercise_style ==  _EXERCISE_STYLE_CHOICES[0][1]:
         return _EXERCISE_STYLE_CHOICES[0][0]
@@ -127,7 +131,10 @@ class Warrant_Item(Model):
     type_code = models.CharField(max_length=1, default='1', choices=_TYPE_CHOICES, verbose_name=_('stock_type'))
 
     objects = WarrantItemManager() 
-    
+    def is_call(self):
+        return self.classification == CLASSIFICATION_CODE['CALL']
+    def is_put(self):
+        return self.classification == CLASSIFICATION_CODE['PUT']
 
 class TwseTradingMixin(object):
     def by_date(self, trading_date):

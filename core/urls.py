@@ -15,4 +15,5 @@ urlpatterns = patterns('',
     url(r'^twse_daily_summary_price_download/$', 'core.views.twse_daily_summary_price_download2', name='twse_daily_summary_price_download2'),
     url(r'^twse_daily_summary_price_process/(?P<qdate>\d+)/$', 'core.views.twse_daily_summary_price_process', name='twse_daily_summary_price_process'),
     url(r'^twse_daily_summary_price_process/$', 'core.views.twse_daily_summary_price_process2', name='twse_daily_summary_price_process2'),
-)
+    url(r'^test_black_scholes/(?P<warrant_symbol>\w+)/date/(?P<qdate>\d+)/$', 'core.views.test_black_scholes', name='test_black_scholes'),
+    )
