@@ -37,6 +37,7 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'core',
+    'core2',
     'django_crontab',
     'django_extensions',
 )
@@ -170,13 +171,28 @@ LOGGING = {
 TWSE_TRADING_DOWNLOAD_URL='http://www.twse.com.tw/ch/trading/fund/T86/T86.php'
 TWSE_PRICE_DOWNLOAD_URL='http://www.twse.com.tw/ch/trading/exchange/MI_INDEX/MI_INDEX.php'
 TWSE_DOWNLOAD_URL_1='http://www.twse.com.tw/en/trading/fund/TWT43U/TWT43U.php'
-TWSE_DOWNLOAD_A=os.path.join(BASE_DIR, 'twse_download_a')
-TWSE_DOWNLOAD_B=os.path.join(BASE_DIR, 'twse_download_b')
-TWSE_DOWNLOAD_C=os.path.join(BASE_DIR, 'twse_download_c')
-TWSE_DOWNLOAD_D=os.path.join(BASE_DIR, 'twse_download_d')
-TWSE_DOWNLOAD_0=os.path.join(BASE_DIR, 'twse_download0')
-TWSE_DOWNLOAD_1=os.path.join(BASE_DIR, 'twse_download1')
-TWSE_DOWNLOAD_2=os.path.join(BASE_DIR, 'twse_download2')
-TWSE_DOWNLOAD_3=os.path.join(BASE_DIR, 'twse_download3')
-TWSE_DOWNLOAD_4=os.path.join(BASE_DIR, 'twse_download4')
-TWSE_DOWNLOAD_5=os.path.join(BASE_DIR, 'twse_download5')
+TWSE_DOWNLOAD_A=os.path.join(BASE_DIR, 'twse','download_a')
+TWSE_DOWNLOAD_B=os.path.join(BASE_DIR, 'twse','download_b')
+TWSE_DOWNLOAD_C=os.path.join(BASE_DIR, 'twse','download_c')
+TWSE_DOWNLOAD_D=os.path.join(BASE_DIR, 'twse','download_d')
+TWSE_DOWNLOAD_0=os.path.join(BASE_DIR, 'twse','download0')
+TWSE_DOWNLOAD_1=os.path.join(BASE_DIR, 'twse','download1')
+TWSE_DOWNLOAD_2=os.path.join(BASE_DIR, 'twse','download2')
+TWSE_DOWNLOAD_3=os.path.join(BASE_DIR, 'twse','download3')
+TWSE_DOWNLOAD_4=os.path.join(BASE_DIR, 'twse','download4')
+TWSE_DOWNLOAD_5=os.path.join(BASE_DIR, 'twse','download5')
+#
+
+TPEX_TRADING_DOWNLOAD_URL='http://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_print.php'
+TPEX_PRICE_DOWNLOAD_URL='http://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_print.php'
+TPEX_HIGHLIGHT_DOWNLOAD_URL='http://www.tpex.org.tw/web/stock/aftertrading/market_highlight/highlight_print.php'
+TPEX_STATS_DOWNLOAD_URL='http://www.tpex.org.tw/web/stock/aftertrading/market_statistics/statistics_print.php'
+
+GT_DOWNLOAD_C=os.path.join(BASE_DIR, 'gt','download_c')
+GT_DOWNLOAD_D=os.path.join(BASE_DIR, 'gt','download_d')
+GT_DOWNLOAD_0=os.path.join(BASE_DIR, 'gt','download0')
+GT_DOWNLOAD_1=os.path.join(BASE_DIR, 'gt','download1')
+GT_DOWNLOAD_2=os.path.join(BASE_DIR, 'gt','download2')
+GT_DOWNLOAD_3=os.path.join(BASE_DIR, 'gt','download3')
+GT_DOWNLOAD_4=os.path.join(BASE_DIR, 'gt','download4')
+GT_DOWNLOAD_5=os.path.join(BASE_DIR, 'gt','download5')

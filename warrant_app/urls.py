@@ -14,5 +14,6 @@ if settings.DEBUG:
 
 urlpatterns += patterns('',
     url(r'^core/', include('core.urls')),
+    url(r'^core2/', include('core2.urls')),
     url(r'^admin/', include(admin.site.urls)),
 )

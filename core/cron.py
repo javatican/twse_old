@@ -17,10 +17,12 @@ from core.models import Cron_Job_Log, Twse_Trading_Downloaded, Twse_Trading, \
     get_warrant_classification, select_warrant_type_code, Twse_Summary_Price_Downloaded, \
     Index_Item, Index_Change_Info, Market_Summary_Type, Market_Summary, \
     Stock_Up_Down_Stats, Twse_Trading_Warrant
+from core2.models import Gt_Stock_Item, Gt_Warrant_Item
 from warrant_app.settings import TWSE_DOWNLOAD_1, TWSE_DOWNLOAD_2, \
     TWSE_DOWNLOAD_3, TWSE_DOWNLOAD_4, TWSE_DOWNLOAD_5, TWSE_TRADING_DOWNLOAD_URL, \
     TWSE_PRICE_DOWNLOAD_URL, TWSE_DOWNLOAD_0, TWSE_DOWNLOAD_A, \
-    TWSE_DOWNLOAD_B, TWSE_DOWNLOAD_C, TWSE_DOWNLOAD_D
+    TWSE_DOWNLOAD_B, TWSE_DOWNLOAD_C, TWSE_DOWNLOAD_D, GT_DOWNLOAD_2, \
+    GT_DOWNLOAD_4, GT_DOWNLOAD_3
 from warrant_app.utils import dateutil
 from warrant_app.utils.black_scholes import option_price_implied_volatility_call_black_scholes_newton, \
     option_price_implied_volatility_put_black_scholes_newton, \
@@ -29,6 +31,7 @@ from warrant_app.utils.black_scholes import option_price_implied_volatility_call
 from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year
 from warrant_app.utils.logutil import log_message
 from warrant_app.utils.stringutil import is_float
+from warrant_app.utils.warrant_util import check_if_warrant_item
 
 
 # from django.utils.translation import ugettext as _
@@ -71,7 +74,7 @@ logger = logging.getLogger('warrant_app.cronjob')
 # def _check_warrant_symbol():
 #     items = Warrant_Item.objects.all()
 #     for item in items:        
-#         if not _check_if_warrant_item(item.symbol):
+#         if not check_if_warrant_item(item.symbol):
 #             print "correcting warrant item:  %s" % item.symbol
 #             stock_item=Stock_Item.objects.create(symbol=item.symbol)
 #             #
@@ -83,16 +86,7 @@ logger = logging.getLogger('warrant_app.cronjob')
 #             item.delete()
 #             
 
-def _check_if_warrant_item(symbol):
-    # use the rule defined since 2010/5/17 ( see http://www.tej.com.tw/webtej/doc/warnt.htm )
-    if len(symbol) != 6: 
-        return False
-    elif symbol[0] == '0' and symbol[1] in ['3', '4', '5', '6', '7', '8']:
-        return True
-    elif symbol[0] == '7' and symbol[1] in ['0', '1', '2', '3']:
-        return True
-    else:
-        return False
+
                 
 def twse_download_stock_info_job():
     log_message(datetime.datetime.now())
@@ -100,7 +94,7 @@ def twse_download_stock_info_job():
     job.title = twse_download_stock_info_job.__name__ 
     try:    
         items = Stock_Item.objects.data_not_yet_download()
-        if _download_stock_info(items):
+        if download_stock_info(items):
             job.success()
         else:
             job.error_message = 'Download process runs with interruption'
@@ -114,7 +108,7 @@ def twse_download_stock_info_job():
             item.save()
         job.save()
                 
-def _download_stock_info(items): 
+def download_stock_info(items, is_gt=False): 
     originUrl = 'http://mops.twse.com.tw/mops/web/t05st03'
     ajaxUrl = 'http://mops.twse.com.tw/mops/web/ajax_quickpgm' 
     try: 
@@ -141,7 +135,10 @@ def _download_stock_info(items):
 # default response encoding is ISO8859-1
             httpResponse.encoding = "utf-8"
             # print httpResponse.text
-            filename = "%s/stock_info_%s" % (TWSE_DOWNLOAD_2, item.symbol)
+            if is_gt:
+                filename = "%s/stock_info_%s" % (GT_DOWNLOAD_2, item.symbol)
+            else:
+                filename = "%s/stock_info_%s" % (TWSE_DOWNLOAD_2, item.symbol)
             with codecs.open(filename, 'wb', encoding="utf8") as fd:
                 print >> fd, httpResponse.text           
             item.data_downloaded = True
@@ -153,7 +150,7 @@ def _download_stock_info(items):
     except requests.ConnectionError:
         logger.info("*** Sleep 180 secs before trying downloading again")
         time.sleep(180)
-        return _download_stock_info(items)
+        return download_stock_info(items, is_gt)
     except:
         raise
         
@@ -169,7 +166,7 @@ def twse_process_stock_info_job():
             filename = "%s/stock_info_%s" % (TWSE_DOWNLOAD_2, item.symbol)
             try:
                 with codecs.open(filename, 'r', encoding="utf8") as fd:
-                    if _process_stock_info(item, fd): 
+                    if process_stock_info(item, fd): 
                         item.data_ok = True
                     else: 
                         item.parsing_error = True
@@ -185,7 +182,7 @@ def twse_process_stock_info_job():
             item.save()
         job.save()
         
-def _process_stock_info(item, fd): 
+def process_stock_info(item, fd): 
     
     soup = BeautifulSoup(fd, 'lxml')
     table_element = soup.find(id='zoom') 
@@ -231,7 +228,7 @@ def twse_download_warrant_info_job():
 
     try:    
         items = Warrant_Item.objects.data_not_yet_download()
-        if _download_warrant_info(items):
+        if download_warrant_info(items):
             job.success()
         else:
             job.error_message = 'Download process runs with interruption'
@@ -245,7 +242,7 @@ def twse_download_warrant_info_job():
             item.save()
         job.save()
         
-def _download_warrant_info(items): 
+def download_warrant_info(items, is_gt=False): 
     originUrl = 'http://mops.twse.com.tw/mops/web/t90sbfa01'
     ajaxUrl = 'http://mops.twse.com.tw/mops/web/ajax_t90sbfa01' 
     try: 
@@ -285,7 +282,10 @@ def _download_warrant_info(items):
 # default response encoding is ISO8859-1
             httpResponse.encoding = "utf-8"
             # print httpResponse.text
-            filename = "%s/warrant_info_%s" % (TWSE_DOWNLOAD_4, item.symbol)
+            if is_gt:
+                filename = "%s/warrant_info_%s" % (GT_DOWNLOAD_4, item.symbol)
+            else:
+                filename = "%s/warrant_info_%s" % (TWSE_DOWNLOAD_4, item.symbol)
             with codecs.open(filename, 'wb', encoding="utf8") as fd:
                 print >> fd, httpResponse.text           
             item.data_downloaded = True
@@ -297,7 +297,7 @@ def _download_warrant_info(items):
     except requests.ConnectionError:
         logger.info("*** Sleep 180 secs before trying downloading again")
         time.sleep(180)
-        return _download_warrant_info(items)
+        return download_warrant_info(items, is_gt)
     except:
         raise
     
@@ -312,7 +312,7 @@ def twse_process_warrant_info_job():
             filename = "%s/warrant_info_%s" % (TWSE_DOWNLOAD_4, item.symbol)
             try:
                 with codecs.open(filename, 'r', encoding="utf8") as fd:                            
-                    if _process_warrant_info(item, fd):                     
+                    if process_warrant_info(item, fd):                     
                         item.data_ok = True
                     else:
                         item.parsing_error = True
@@ -328,7 +328,7 @@ def twse_process_warrant_info_job():
             item.save()
         job.save()
         
-def _process_warrant_info(item, fd): 
+def process_warrant_info(item, fd): 
     soup = BeautifulSoup(fd, 'lxml')
     tr_element = soup.find('tr', class_='even')
     if not tr_element: 
@@ -382,7 +382,7 @@ def twse_bulk_download_warrant_info_job():
                 stock['data_downloaded'] = True
             else:
                 stock['data_downloaded'] = False
-        if _bulk_download_warrant_info(stocks):
+        if bulk_download_warrant_info(stocks):
             job.success()
         else:
             job.error_message = 'Download process runs with interruption'
@@ -394,7 +394,7 @@ def twse_bulk_download_warrant_info_job():
     finally:
         job.save()
                 
-def _bulk_download_warrant_info(items): 
+def bulk_download_warrant_info(items,is_gt=False): 
     originUrl = 'http://mops.twse.com.tw/mops/web/t90sbfa01'
     ajaxUrl = 'http://mops.twse.com.tw/mops/web/ajax_t90sbfa01' 
     try: 
@@ -433,7 +433,10 @@ def _bulk_download_warrant_info(items):
 # default response encoding is ISO8859-1
             httpResponse.encoding = "utf-8"
             # print httpResponse.text
-            filename = "%s/bulk_warrant_info_%s" % (TWSE_DOWNLOAD_3, item['stock_symbol__symbol'])
+            if is_gt:
+                filename = "%s/bulk_warrant_info_%s" % (GT_DOWNLOAD_3, item['stock_symbol__symbol'])
+            else:
+                filename = "%s/bulk_warrant_info_%s" % (TWSE_DOWNLOAD_3, item['stock_symbol__symbol'])
             with codecs.open(filename, 'wb', encoding="utf8") as fd:
                 print >> fd, httpResponse.text           
             item['data_downloaded'] = True
@@ -445,7 +448,7 @@ def _bulk_download_warrant_info(items):
     except requests.ConnectionError:
         logger.info("*** Sleep 180 secs before trying downloading again")
         time.sleep(180)
-        return _bulk_download_warrant_info(items)
+        return bulk_download_warrant_info(items, is_gt)
     except:
         raise
         
@@ -462,7 +465,7 @@ def twse_bulk_process_warrant_info_job():
             if stock['stock_symbol__symbol'] in stocks_processed: continue
             filename = "%s/bulk_warrant_info_%s" % (TWSE_DOWNLOAD_3, stock['stock_symbol__symbol'])
             if os.path.isfile(filename):
-                _bulk_process_warrant_info(stock['stock_symbol__symbol'])
+                bulk_process_warrant_info(stock['stock_symbol__symbol'])
         job.success()
     except: 
         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
@@ -471,15 +474,20 @@ def twse_bulk_process_warrant_info_job():
     finally:
         job.save()
         
-def has_css_class(css_class):
+def _has_css_class(css_class):
     return css_class == 'even' or css_class == "odd"
 
-def _bulk_process_warrant_info(stock_symbol): 
-    stock_item = Stock_Item.objects.get_by_symbol(stock_symbol)
-    filename = "%s/bulk_warrant_info_%s" % (TWSE_DOWNLOAD_3, stock_symbol)
+def bulk_process_warrant_info(stock_symbol, is_gt=False): 
+    if is_gt:
+        stock_item = Gt_Stock_Item.objects.get_by_symbol(stock_symbol)
+        filename = "%s/bulk_warrant_info_%s" % (GT_DOWNLOAD_3, stock_symbol)
+    else:
+        stock_item = Stock_Item.objects.get_by_symbol(stock_symbol)
+        filename = "%s/bulk_warrant_info_%s" % (TWSE_DOWNLOAD_3, stock_symbol)
+# 
     with codecs.open(filename, 'r', encoding="utf8") as fd:              
         soup = BeautifulSoup(fd, 'lxml')
-        tr_element_list = soup.find_all('tr', class_=has_css_class)
+        tr_element_list = soup.find_all('tr', class_=_has_css_class)
         if len(tr_element_list) == 0: 
             logger.warning("No warrant data in %s" % filename)
             return
@@ -487,7 +495,7 @@ def _bulk_process_warrant_info(stock_symbol):
         i_processed = 0
         for tr_element in tr_element_list:
             # python doesn't have breaking outer loop syntax, so need to put the inner loop code into a separate function
-            result = _process_td_elements(tr_element, stock_item)
+            result = _process_td_elements(tr_element, stock_item, is_gt)
             if result:  
                 i_processed += 1              
             i += 1
@@ -495,14 +503,18 @@ def _bulk_process_warrant_info(stock_symbol):
         logger.warning("Total %s warrant data processed" % i_processed)
         return True
     
-def _process_td_elements(tr_element, stock_item):
+def _process_td_elements(tr_element, stock_item, is_gt=False): 
     i = 0
     warrant_item = None
     for td_element in tr_element.find_all('td', recursive=False):
         warrant_data = td_element.string.strip()
         # print warrant_data
         if i == 0:
-            warrant_item, created = Warrant_Item.objects.get_or_create(symbol=warrant_data)
+            if is_gt:
+                warrant_item, created = Gt_Warrant_Item.objects.get_or_create(symbol=warrant_data)
+            else:
+                warrant_item, created = Warrant_Item.objects.get_or_create(symbol=warrant_data)
+#
             if warrant_item.data_ok: 
                 logger.warning("Warrant data (%s) exists!" % warrant_item.symbol)
                 return False
@@ -716,7 +728,7 @@ def _process_day_trading(qdate):
             for td_element in row.find_all('td', recursive=False):
                 dt_data = td_element.string.strip()
                 if i == 0:
-                    if _check_if_warrant_item(dt_data):
+                    if check_if_warrant_item(dt_data):
                         warrant_item, created = Warrant_Item.objects.get_or_create(symbol=dt_data)
                         dt_item = Twse_Trading_Warrant()
                         trading_warrant_items_to_save.append(dt_item)
@@ -944,7 +956,7 @@ def _process_day_price(qdate):
                     trade_volume = int(dt_data.replace(',', '')) 
                     if trade_volume == 0 : break
                     # create model objects
-                    if _check_if_warrant_item(symbol):
+                    if check_if_warrant_item(symbol):
                         warrant_item, created = Warrant_Item.objects.get_or_create(symbol=symbol)
                         dt_item, created = Twse_Trading_Warrant.objects.get_or_create(warrant_symbol=warrant_item, trading_date=dateutil.convertToDate(qdate))
                         warrant_count+=1
