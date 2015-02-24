@@ -36,7 +36,7 @@ class Gt_Stock_Item(Model):
     symbol=models.CharField(default='', max_length=10, verbose_name=_('stock_symbol'))
     short_name=models.CharField(default='', max_length=20, verbose_name=_('stock_short_name'))
     name=models.CharField(default='', max_length=100, verbose_name=_('stock_name'))
-    type_code = models.CharField(max_length=1, default='1', choices=_TYPE_CHOICES, verbose_name=_('stock_type'))
+    type_code = models.CharField(max_length=1, default='2', choices=_TYPE_CHOICES, verbose_name=_('stock_type'))
     market_category=models.CharField(default='', max_length=50, verbose_name=_('market_category'))
     notes=models.CharField(default='', max_length=100, verbose_name=_('notes'))
     data_ok = models.BooleanField(default=False, verbose_name=_('data_ok')) 
@@ -46,6 +46,10 @@ class Gt_Stock_Item(Model):
     etf_target = models.CharField(default='', max_length=100, verbose_name=_('etf_target'))
 
     objects= GtStockItemManager()
+    def is_stock_type_1(self): 
+        return self.type_code == _TYPE_CHOICES[0][0]
+    def is_stock_type_2(self): 
+        return self.type_code == _TYPE_CHOICES[1][0]
     
 class GtWarrantItemMixin(object):
     def need_to_process(self): 
@@ -114,13 +118,18 @@ class Gt_Warrant_Item(Model):
     data_ok = models.BooleanField(default=False, verbose_name=_('data_ok')) 
     data_downloaded = models.BooleanField(default=False, verbose_name=_('data_downloaded')) 
     parsing_error = models.BooleanField(default=False, verbose_name=_('parsing_error')) 
-    type_code = models.CharField(max_length=1, default='1', choices=_TYPE_CHOICES, verbose_name=_('stock_type'))
+    type_code = models.CharField(max_length=1, default='2', choices=_TYPE_CHOICES, verbose_name=_('stock_type'))
 
     objects = GtWarrantItemManager() 
     def is_call(self):
         return self.classification == CLASSIFICATION_CODE['CALL']
     def is_put(self):
         return self.classification == CLASSIFICATION_CODE['PUT']
+    
+    def is_stock_type_1(self): 
+        return self.type_code == _TYPE_CHOICES[0][0]
+    def is_stock_type_2(self): 
+        return self.type_code == _TYPE_CHOICES[1][0]
 
 class GtTradingMixin(object):
     def by_date(self, trading_date):

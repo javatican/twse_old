@@ -2,12 +2,10 @@
 from bs4 import BeautifulSoup
 import codecs
 import datetime
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 import logging
 import os
 import re
-from requests import Session
 import requests
 import sys
 import time
@@ -15,25 +13,18 @@ import time
 from core.cron import download_stock_info, process_stock_info, \
     download_warrant_info, process_warrant_info, bulk_download_warrant_info, \
     bulk_process_warrant_info
-from core.models import Cron_Job_Log
+from core.models import Cron_Job_Log, Trading_Date
 from core2.models import Gt_Trading_Downloaded, Gt_Trading, \
-    Gt_Warrant_Item, Gt_Stock_Item, get_stock_item_type, get_warrant_exercise_style, \
-    get_warrant_classification, select_warrant_type_code, Gt_Summary_Price_Downloaded, \
+    Gt_Warrant_Item, Gt_Stock_Item, Gt_Summary_Price_Downloaded, \
     Gt_Market_Summary_Type, Gt_Market_Summary, \
     Gt_Market_Highlight, Gt_Trading_Warrant
-from warrant_app.settings import TWSE_DOWNLOAD_1, TWSE_DOWNLOAD_2, \
-    TWSE_DOWNLOAD_3, TWSE_DOWNLOAD_4, TWSE_DOWNLOAD_5, TWSE_TRADING_DOWNLOAD_URL, \
-    TWSE_PRICE_DOWNLOAD_URL, TWSE_DOWNLOAD_0, TWSE_DOWNLOAD_A, \
-    TWSE_DOWNLOAD_B, TWSE_DOWNLOAD_C, TWSE_DOWNLOAD_D, GT_DOWNLOAD_2, \
+from warrant_app.settings import  GT_DOWNLOAD_2, \
     GT_DOWNLOAD_4, GT_DOWNLOAD_3, TPEX_TRADING_DOWNLOAD_URL, GT_DOWNLOAD_1, \
     TPEX_STATS_DOWNLOAD_URL, GT_DOWNLOAD_C, TPEX_HIGHLIGHT_DOWNLOAD_URL, \
     GT_DOWNLOAD_D, TPEX_PRICE_DOWNLOAD_URL, GT_DOWNLOAD_0
 from warrant_app.utils import dateutil
-from warrant_app.utils.black_scholes import option_price_implied_volatility_call_black_scholes_newton, \
-    option_price_implied_volatility_put_black_scholes_newton, \
-    option_price_delta_call_black_scholes, option_price_delta_put_black_scholes, \
-    option_price_call_black_scholes, option_price_put_black_scholes
-from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year
+from warrant_app.utils.dateutil import western_to_roc_year, roc_year_to_western, \
+    is_third_wednesday
 from warrant_app.utils.logutil import log_message
 from warrant_app.utils.stringutil import is_float
 from warrant_app.utils.warrant_util import check_if_warrant_item
@@ -41,7 +32,45 @@ from warrant_app.utils.warrant_util import check_if_warrant_item
 
 # from django.utils.translation import ugettext as _
 logger = logging.getLogger('warrant_app.cronjob')
+# below function is called once to exact twse trading date since 2014/1
+def _download_trading_date():
+    serviceUrl = 'http://www.tpex.org.tw/web/stock/aftertrading/daily_trading_index/st41_print.php'
+    year=103
+    for month in range(1,13):
+        year_month = "%s/%s" % (year,month)
+        parameters = {'d': year_month, 'l':'zh-tw', 's':'0,asc,0'}
+        try:        
+            httpResponse = requests.get(serviceUrl, params=parameters, stream=True)
+            httpResponse.encoding = "utf-8"
+        except requests.HTTPError, e:
+            result = e.read()
+            raise Exception(result)
+        
+        soup = BeautifulSoup(httpResponse.text, 'lxml')
+        tbody_element = soup.find('tbody')
+        tr_list = tbody_element.find_all('tr')
+        j=0
+        for row in tr_list:
+            i=0
+            for td_element in row.find_all('td', recursive=False):
+                dt_data = td_element.string.strip()
+                if i == 0:
+                    tdate = Trading_Date()
+                    tdate.trading_date = roc_year_to_western(dt_data)
+                    #date.weekday(): Return the day of the week as an integer, where Monday is 0 and Sunday is 6.
+                    tdate.day_of_week= tdate.trading_date.weekday()+1
+                    if j==0:
+                        #first trading date of the month
+                        tdate.first_trading_day_of_month=True
+                    if j==len(tr_list)-1:
+                        tdate.last_trading_day_of_month=True
+                    if is_third_wednesday(tdate.trading_date):
+                        tdate.is_future_delivery_day=True
+                    tdate.save() 
+                    break
+                i+=1
 
+            j+=1
 def gt_download_stock_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
@@ -295,7 +324,7 @@ def _process_day_trading(qdate):
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr')
-        logger.info("There are %s trading records in file" % (len(rows)-1))
+        logger.info("There are %s trading records in file" % len(rows))
         for row in rows:
             i = 0
             dt_item = None
@@ -487,9 +516,9 @@ def gt_daily_price_process_job(q_date=None):
         transaction.set_autocommit(True)
         
 def check_up_or_down(data):
-    if data[0] == u'＋': 
+    if data[0] == u'+': 
         return float(data[1:])
-    elif data[0] == u'－': 
+    elif data[0] == u'-': 
         return -1 * float(data[1:])
     else: 
         return 0
@@ -696,7 +725,7 @@ def _process_market_highlight(qdate):
         dt_item.closing_index = float(dt_data)
         dt_data = cells[3].string.strip().replace(',', '')
         dt_item.change = float(dt_data)
-        dt_item.change_in_percentage = dt_item.change/dt_item.closing_index
+        dt_item.change_in_percentage = (dt_item.change/dt_item.closing_index)*100.0
         # process rows[6]
         cells = rows[6].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')

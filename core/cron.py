@@ -356,8 +356,11 @@ def process_warrant_info(item, fd):
             item.expiration_date = roc_year_to_western(warrant_data)
         elif i == 11:
             item.issued_volume = int(warrant_data.replace(',', ''))   
-        elif i == 12:            
-            stock_item, created = Stock_Item.objects.get_or_create(symbol=warrant_data)
+        elif i == 12:       
+            if item.is_stock_type_1():
+                stock_item, created = Stock_Item.objects.get_or_create(symbol=warrant_data)
+            else:
+                stock_item, created = Gt_Stock_Item.objects.get_or_create(symbol=warrant_data)
             item.target_stock = stock_item
             item.target_symbol = stock_item.symbol                  
         elif i == 15:

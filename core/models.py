@@ -19,6 +19,26 @@ class Cron_Job_Log(Model):
     def failed(self):
         self.status_code = '2'
         
+class TradingDateMixin(object):
+    pass
+    
+class TradingDateQuerySet(QuerySet, TradingDateMixin):
+    pass
+
+class TradingDateManager(models.Manager, TradingDateMixin):
+    def get_queryset(self):
+        return TradingDateQuerySet(self.model, using=self._db)
+    
+class Trading_Date(Model):
+    trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
+    day_of_week = models.PositiveIntegerField(default=9, verbose_name=_('day_of_week'))
+    is_future_delivery_day = models.BooleanField(default=False, verbose_name=_('is_future_delivery_day')) 
+    first_trading_day_of_month = models.BooleanField(default=False, verbose_name=_('first_trading_day_of_month')) 
+    last_trading_day_of_month = models.BooleanField(default=False, verbose_name=_('last_trading_day_of_month')) 
+    is_market_closed = models.BooleanField(default=False, verbose_name=_('is_market_closed')) 
+    
+    objects= TradingDateManager()
+           
 class StockItemMixin(object):
     def need_to_process(self): 
         return self.filter(data_ok=False, data_downloaded=True, parsing_error=False)
@@ -60,6 +80,11 @@ class Stock_Item(Model):
     etf_target = models.CharField(default='', max_length=100, verbose_name=_('etf_target'))
 
     objects= StockItemManager()
+        
+    def is_stock_type_1(self): 
+        return self.type_code == _TYPE_CHOICES[0][0]
+    def is_stock_type_2(self): 
+        return self.type_code == _TYPE_CHOICES[1][0]
     
 class WarrantItemMixin(object):
     def need_to_process(self): 
@@ -136,6 +161,11 @@ class Warrant_Item(Model):
     def is_put(self):
         return self.classification == CLASSIFICATION_CODE['PUT']
 
+    def is_stock_type_1(self): 
+        return self.type_code == _TYPE_CHOICES[0][0]
+    def is_stock_type_2(self): 
+        return self.type_code == _TYPE_CHOICES[1][0]
+    
 class TwseTradingMixin(object):
     def by_date(self, trading_date):
         return self.filter(trading_date=trading_date)
