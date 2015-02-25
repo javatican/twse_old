@@ -20,7 +20,8 @@ class Cron_Job_Log(Model):
         self.status_code = '2'
         
 class TradingDateMixin(object):
-    pass
+    def since_which_date(self, qdate): 
+        return self.filter(trading_date__gte=qdate)
     
 class TradingDateQuerySet(QuerySet, TradingDateMixin):
     pass

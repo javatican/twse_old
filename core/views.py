@@ -19,9 +19,9 @@ def test_black_scholes(request, warrant_symbol, qdate):
         #format yyyymmdd
         q_date=dateutil.convertToDate(qdate)
         test_black_scholes_job(warrant_symbol,q_date)
-        message = _('Job execution finished!')
+        message = _('Job execution finished2!')
     except:
-        message = _('Job execution failed!')
+        message = _('Job execution failed2!')
     data = {}
     data['message'] = message
     return HttpResponse(json.dumps(data), content_type='application/json') 

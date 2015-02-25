@@ -3,7 +3,7 @@ import calendar
 import datetime
 
 def string_to_date(date_string, date_format='%Y/%m/%d'):
-    return datetime.datetime.strptime(date_string,date_format)
+    return datetime.datetime.strptime(date_string,date_format).date()
 
 def is_third_wednesday(d): 
     return d.weekday() == 2 and 14 < d.day < 22
@@ -65,7 +65,7 @@ def getFirstDayPrevMonth(today=None):
     # return a timezone aware object
     return prev_month_1st
 
-def convertToDate(date_string):
+def convertToDateTime(date_string):
     #convert a string of format 'yyyymmdd' to date object
     year = int(date_string[:4])
     mon= int(date_string[4:6])
@@ -74,4 +74,5 @@ def convertToDate(date_string):
     time = datetime.time(0, 0, 0)
     return datetime.datetime.combine(datetime.date(year, mon, day), time).replace(tzinfo=timezone.get_current_timezone())
     
-    
+def convertToDate(date_string):
+    return string_to_date(date_string, date_format='%Y%m%d')

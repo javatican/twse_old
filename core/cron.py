@@ -1292,7 +1292,7 @@ def _process_day_updown_stats(qdate):
     return True
 
 
-def test_black_scholes_job(warrant_symbol, qdate):
+def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
     # get the warrant_item and trading_warrant and target_stock model instances
     try:
         warrant_item= Warrant_Item.objects.select_related('target_stock').get(symbol=warrant_symbol)
@@ -1301,6 +1301,8 @@ def test_black_scholes_job(warrant_symbol, qdate):
         # or use closing_price
         exercise_ratio = warrant_item.exercise_ratio*1.0/1000.0
         spot_price = float(trading_item.last_best_bid_price)
+        if use_closing_price:        
+            spot_price = float(trading_item.closing_price)
         strike_price = float(warrant_item.strike_price)
         interest_rate= 0.0136
         expiration_date = warrant_item.expiration_date
@@ -1308,21 +1310,30 @@ def test_black_scholes_job(warrant_symbol, qdate):
         time_to_maturity = float(diff.days)/365.0
         # or use closing_price
         option_price = float(trading_warrant_item.last_best_bid_price)/exercise_ratio
+        if use_closing_price:        
+            option_price = float(trading_warrant_item.closing_price)/exercise_ratio
+            
         if warrant_item.is_call():
             sigma = option_price_implied_volatility_call_black_scholes_newton(spot_price, strike_price, interest_rate, time_to_maturity,  
                                                               option_price)
-            delta = option_price_delta_call_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)*exercise_ratio
+            delta = option_price_delta_call_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity) 
             warrant_price = option_price_call_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)
         else:
             sigma = option_price_implied_volatility_put_black_scholes_newton(spot_price, strike_price, interest_rate, time_to_maturity,  
                                                               option_price)
-            delta = option_price_delta_put_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)*exercise_ratio
+            delta = option_price_delta_put_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity) 
             warrant_price = option_price_put_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)
-        print "Warrant item %s: spot_price = %s, strike_price= %s, option_price= %s" % (warrant_symbol,spot_price,strike_price, option_price)
-        print "Warrant item %s: expiration_date = %s, time_to_maturity= %s" % (warrant_symbol,expiration_date,time_to_maturity)
-        print "Warrant item %s: intrinsic volatility= %s, delta= %s" % (warrant_symbol,sigma,delta)
-        print "Warrant item %s: warrant price= %s" % (warrant_symbol,warrant_price)
+        gearing=spot_price/option_price
+        leverage=gearing*delta
+        logger.info("Warrant item %s: spot_price = %s, strike_price= %s, option_price= %s" % (warrant_symbol,spot_price,strike_price, option_price*exercise_ratio))
+        logger.info("Warrant item %s: expiration_date = %s, time_to_maturity= %s" % (warrant_symbol,expiration_date,time_to_maturity))
+        logger.info("Warrant item %s: intrinsic volatility= %s, delta= %s" % (warrant_symbol,sigma,delta*exercise_ratio))
+        logger.info("Warrant item %s: warrant price= %s" % (warrant_symbol,warrant_price*exercise_ratio))
+        logger.info("Warrant item %s: gearing= %s, leverage= %s" % (warrant_symbol,gearing,leverage))
     except ObjectDoesNotExist:
         logger.warning("Warrant symbol %s not found" % warrant_symbol)
-        
+        raise
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        raise
     

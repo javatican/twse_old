@@ -35,8 +35,8 @@ logger = logging.getLogger('warrant_app.cronjob')
 # below function is called once to exact twse trading date since 2014/1
 def _download_trading_date():
     serviceUrl = 'http://www.tpex.org.tw/web/stock/aftertrading/daily_trading_index/st41_print.php'
-    year=103
-    for month in range(1,13):
+    year=104
+    for month in range(2,3):
         year_month = "%s/%s" % (year,month)
         parameters = {'d': year_month, 'l':'zh-tw', 's':'0,asc,0'}
         try:        
@@ -418,6 +418,8 @@ def gt_daily_summary_price_download_job(q_date=None):
 #
 def _get_market_summary_and_day_price(qdate):
     # below are used to flag if data is available (if count >0)
+    datarow_count_1c = 0 
+    datarow_count_1d = 0 
     datarow_count = 0 
 #get tpex market stats
     serviceUrl = TPEX_STATS_DOWNLOAD_URL
@@ -432,7 +434,17 @@ def _get_market_summary_and_day_price(qdate):
         raise Exception(result)
     filename1c = "%s/tpex_stats_%s" % (GT_DOWNLOAD_C, re.sub('/', '', qdate))
     with codecs.open(filename1c, 'wb', encoding="utf8") as fd:
-        print >> fd, httpResponse.text   
+        soup = BeautifulSoup(httpResponse.text , 'lxml')
+        tbody_element = soup.find('tbody')
+        # check if data is available for market stats
+        if tbody_element == None: 
+            logger.warning("No tbody tag in market stats")
+            return False
+#
+        for tag in tbody_element.find_all('tr'):
+            datarow_count_1c += 1
+            print >> fd, unicode(tag)
+        logger.info("%s market stats records downloaded" % datarow_count_1c)
 #get tpex market highlight
     serviceUrl = TPEX_HIGHLIGHT_DOWNLOAD_URL
     try:        
@@ -443,8 +455,18 @@ def _get_market_summary_and_day_price(qdate):
         raise Exception(result)
     filename1d = "%s/tpex_highlight_%s" % (GT_DOWNLOAD_D, re.sub('/', '', qdate))
     with codecs.open(filename1d, 'wb', encoding="utf8") as fd:
-        print >> fd, httpResponse.text   
-        
+        soup = BeautifulSoup(httpResponse.text , 'lxml')
+        tbody_element = soup.find('tbody')
+        # check if data is available for market highlight
+        if tbody_element == None: 
+            logger.warning("No tbody tag in market highlight")
+            return False
+#
+        for tag in tbody_element.find_all('tr'):
+            datarow_count_1d += 1
+            print >> fd, unicode(tag)
+        logger.info("%s market highlight records downloaded" % datarow_count_1d)
+
 #get tpex daily quotes
     serviceUrl = TPEX_PRICE_DOWNLOAD_URL
     parameters = {'d': qdate_roc, 'l':'zh-tw', 's':'0,asc,0'}
@@ -463,12 +485,15 @@ def _get_market_summary_and_day_price(qdate):
     with codecs.open(filename, 'r', encoding="utf8") as fd3:
         soup = BeautifulSoup(fd3, 'lxml')
         tbody_element = soup.find('tbody')
+        if tbody_element == None: 
+            logger.warning("No tbody tag in price records")
+            return False
         with codecs.open(filename2, 'wb', encoding="utf8") as fd2:
             for tag in tbody_element.find_all('tr'):
                 datarow_count += 1
                 print >> fd2, unicode(tag)
         logger.info("%s price records downloaded" % datarow_count)
-    if(datarow_count <= 1):
+    if(datarow_count_1c == 0 or datarow_count_1d == 0 or datarow_count <= 1):
         os.remove(filename)
         os.remove(filename1c)
         os.remove(filename1d)
@@ -477,8 +502,52 @@ def _get_market_summary_and_day_price(qdate):
     else:
         return True
 
-_allow_partially_run = False
+_allow_partially_run = True
 
+def gt_daily_summary_price_process_job(q_date=None):
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = gt_daily_summary_price_process_job.__name__  
+    try:
+        if not q_date: 
+            q_date = datetime.datetime.now()
+        qdate = q_date.strftime("%Y%m%d")
+        # for any specific date, the gt_daily_trading_process_job need to be run first
+        # so check if above mentioned job has been done
+        if not Gt_Trading_Downloaded.objects.check_processed(q_date):
+            job.error_message = "Trading data need to be processed before price data"
+            raise Exception(job.error_message)
+        else:
+            try:
+                # check if downloaded and available
+                ob = Gt_Summary_Price_Downloaded.objects.available_and_price_unprocessed(q_date)
+                if _process_daily_price(qdate):
+                    ob.price_processed = True
+                    ob.save()
+                ob = Gt_Summary_Price_Downloaded.objects.available_and_summary_unprocessed(q_date)
+                if _process_market_summary(qdate):
+                    ob.summary_processed = True
+                    ob.save()
+                ob = Gt_Summary_Price_Downloaded.objects.available_and_highlight_unprocessed(q_date)
+                if _process_market_highlight(qdate):
+                    ob.highlight_processed = True
+                    ob.save()
+            except Gt_Summary_Price_Downloaded.DoesNotExist:               
+                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+                raise Exception(job.error_message)
+        transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+        
 def gt_daily_price_process_job(q_date=None):
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
@@ -631,8 +700,8 @@ def _process_market_summary(qdate):
     filename = "%s/tpex_stats_%s" % (GT_DOWNLOAD_C, qdate)
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
-        tbody_element = soup.find('tbody')
-        rows = tbody_element.find_all('tr')
+        #tbody_element = soup.find('tbody')
+        rows = soup.find_all('tr')
         logger.info("There are %s summary records in file." % len(rows))
         record_stored = 0
         for row in rows:
@@ -693,8 +762,8 @@ def _process_market_highlight(qdate):
     filename = "%s/tpex_highlight_%s" % (GT_DOWNLOAD_D, qdate)
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
-        tbody_element = soup.find('tbody')
-        rows = tbody_element.find_all('tr')
+        #tbody_element = soup.find('tbody')
+        rows = soup.find_all('tr')
         logger.info("There are %s market highlight records in file." % len(rows))
         #
         dt_item = Gt_Market_Highlight()
