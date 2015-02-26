@@ -22,6 +22,8 @@ class Cron_Job_Log(Model):
 class TradingDateMixin(object):
     def since_which_date(self, qdate): 
         return self.filter(trading_date__gte=qdate)
+    def between_dates(self, start_date, end_date): 
+        return self.filter(trading_date__gte=start_date, trading_date__lte=end_date)
     
 class TradingDateQuerySet(QuerySet, TradingDateMixin):
     pass

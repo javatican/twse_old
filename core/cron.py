@@ -891,7 +891,77 @@ def _get_market_summary_and_day_price(qdate):
     else:
         return True
 
+        
 _allow_partially_run = False
+
+def twse_daily_summary_price_process_job(q_date=None):
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = twse_daily_summary_price_process_job.__name__ 
+    try:
+        if not q_date: 
+            q_date = datetime.datetime.now()
+        qdate = q_date.strftime("%Y%m%d")
+        # for any specific date, the twse_daily_trading_process_job need to be run first
+        # so check if above mentioned job has been done
+        if not Twse_Trading_Downloaded.objects.check_processed(q_date):
+            job.error_message = "Trading data need to be processed before price data"
+            raise Exception(job.error_message)
+        else:
+            try:
+                # check if downloaded and available
+                ob = Twse_Summary_Price_Downloaded.objects.available_and_price_unprocessed(q_date)
+                if _process_day_price(qdate):
+                    ob.price_processed = True
+                    ob.save()
+            except Twse_Summary_Price_Downloaded.DoesNotExist:               
+                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+                if not _allow_partially_run: raise Exception(job.error_message)
+                # check if downloaded and available
+            try:
+                ob = Twse_Summary_Price_Downloaded.objects.available_and_index_unprocessed(q_date)
+                if _process_day_index(qdate):
+                    ob.index_processed = True
+                    ob.save()
+            except Twse_Summary_Price_Downloaded.DoesNotExist:
+                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+                if not _allow_partially_run: raise Exception(job.error_message)
+            try:
+                ob = Twse_Summary_Price_Downloaded.objects.available_and_tri_index_unprocessed(q_date)
+                if _process_day_tri_index(qdate):
+                    ob.tri_index_processed = True
+                    ob.save()
+            except Twse_Summary_Price_Downloaded.DoesNotExist:
+                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+                if not _allow_partially_run: raise Exception(job.error_message) 
+            try:
+                ob = Twse_Summary_Price_Downloaded.objects.available_and_summary_unprocessed(q_date)
+                if _process_day_summary(qdate):
+                    ob.summary_processed = True
+                    ob.save()
+            except Twse_Summary_Price_Downloaded.DoesNotExist:
+                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+                if not _allow_partially_run: raise Exception(job.error_message)      
+            try:
+                ob = Twse_Summary_Price_Downloaded.objects.available_and_updown_unprocessed(q_date)
+                if _process_day_updown_stats(qdate):
+                    ob.updown_processed = True
+                    ob.save()
+            except Twse_Summary_Price_Downloaded.DoesNotExist:
+                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+                if not _allow_partially_run: raise Exception(job.error_message)      
+        transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
 
 def twse_daily_price_process_job(q_date=None):
     transaction.set_autocommit(False)
