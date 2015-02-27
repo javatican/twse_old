@@ -1,3 +1,4 @@
+# coding=utf8
 from django.db import models
 from django.db.models.base import Model
 from django.db.models.query import QuerySet
@@ -21,8 +22,8 @@ class GtStockItemManager(models.Manager, GtStockItemMixin):
         return self.get(symbol=symbol)
     
 _TYPE_CHOICES = (
-        ('1', _('stock_type_1')),
-        ('2', _('stock_type_2')),)
+        ('1', u'上市'),
+        ('2', u'上櫃'),)
 
 def get_stock_item_type(type_name):
     if type_name ==  _TYPE_CHOICES[0][1]:
@@ -56,6 +57,8 @@ class GtWarrantItemMixin(object):
         return self.filter(data_ok=False, data_downloaded=True, parsing_error=False)
     def data_not_yet_download(self):
         return self.filter(data_downloaded=False)
+    def data_need_other_download_url(self):
+        return self.filter(parsing_error=True)
         
 class GtWarrantItemQuerySet(QuerySet, GtWarrantItemMixin):
     pass
@@ -66,15 +69,16 @@ class GtWarrantItemManager(models.Manager, GtWarrantItemMixin):
     def stocks_has_warrants(self):
         return self.filter(data_ok=True).distinct().values_list('target_stock__symbol', flat=True)
     
+
 _CALL = '1'
 _PUT = '2' 
 _EXERCISE_STYLE_CHOICES = (
-        ('1', _('European')),
-        ('2', _('American')),)
+        ('1', u'歐式'),
+        ('2', u'美式'),)
 _CLASSIFICATION_CHOICES = (
-        (_CALL, _('call')),
-        (_PUT, _('put')),)
- 
+        (_CALL, u'認購'),
+        (_PUT, u'認售'),)
+
 CLASSIFICATION_CODE = {'CALL':_CALL, 'PUT': _PUT}
 
 def get_warrant_exercise_style(exercise_style):

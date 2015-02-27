@@ -28,7 +28,8 @@ from warrant_app.utils.black_scholes import option_price_implied_volatility_call
     option_price_implied_volatility_put_black_scholes_newton, \
     option_price_delta_call_black_scholes, option_price_delta_put_black_scholes, \
     option_price_call_black_scholes, option_price_put_black_scholes
-from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year
+from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year, \
+    convertToDate
 from warrant_app.utils.logutil import log_message
 from warrant_app.utils.stringutil import is_float
 from warrant_app.utils.warrant_util import check_if_warrant_item
@@ -241,7 +242,7 @@ def twse_download_warrant_info_job():
         for item in items:
             item.save()
         job.save()
-        
+    
 def download_warrant_info(items, is_gt=False): 
     originUrl = 'http://mops.twse.com.tw/mops/web/t90sbfa01'
     ajaxUrl = 'http://mops.twse.com.tw/mops/web/ajax_t90sbfa01' 
@@ -327,7 +328,7 @@ def twse_process_warrant_info_job():
         for item in items:
             item.save()
         job.save()
-        
+  
 def process_warrant_info(item, fd): 
     soup = BeautifulSoup(fd, 'lxml')
     tr_element = soup.find('tr', class_='even')
@@ -371,6 +372,130 @@ def process_warrant_info(item, fd):
     if i == 0: 
         logger.warning("No table data tag in file %s" % item.symbol)
         return False
+    return True
+      
+def twse_manage_warrant_info_use_other_url_job():
+#different url , for 'finished' warrants 
+#only deal with items with parsing_error=True
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = twse_manage_warrant_info_use_other_url_job.__name__ 
+    try:    
+        items = Warrant_Item.objects.data_need_other_download_url()
+        if manage_warrant_info_2(items):
+            job.success()
+        else:
+            job.error_message = 'Download process runs with interruption'
+            raise Exception(job.error_message)
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        job.failed() 
+        raise 
+    finally:        
+        for item in items:
+            item.save()
+        job.save()
+        
+def manage_warrant_info_2(items, is_gt=False): 
+    #different url , for 'finished' warrants 
+    gen = (item for item in items if item.parsing_error == True)
+    try: 
+        for item in gen:
+            serviceUrl = 'http://www.cnyes.com/twstock/Wbasic/%s.htm' % item.symbol
+            httpResponse = requests.get(serviceUrl)
+            httpResponse.encoding = "utf-8"
+            if is_gt:
+                filename = "%s/Wwarrant_info_%s" % (GT_DOWNLOAD_4, item.symbol)
+            else:
+                filename = "%s/Wwarrant_info_%s" % (TWSE_DOWNLOAD_4, item.symbol)
+            with codecs.open(filename, 'wb', encoding="utf8") as fd:
+                soup = BeautifulSoup(httpResponse.text , 'lxml')
+                table_element = soup.find(id='ctl00_ContentPlaceHolder1_htb1')
+                if table_element == None: 
+                    logger.warning("No table tag in warrant info")
+                    continue
+#
+                for tag in table_element.find_all('tr'):
+                    print >> fd, unicode(tag) 
+            #next do the process
+            try:
+                with codecs.open(filename, 'r', encoding="utf8") as fd:                            
+                    if process_warrant_info_2(item, fd):                     
+                        item.data_downloaded = True
+                        item.data_ok = True
+                        item.parsing_error = False
+            except IOError:
+                logger.warning("Error reading the warrant info file")
+                continue 
+            time.sleep(3)
+        return True
+    except requests.HTTPError, e:
+        result = e.read()
+        raise Exception(result) 
+    except requests.ConnectionError:
+        logger.info("*** Sleep 180 secs before trying downloading again")
+        time.sleep(180)
+        return manage_warrant_info_2(items, is_gt)
+    except:
+        raise
+          
+def process_warrant_info_2(item, fd): 
+    #go along with manage_warrant_info_2, ie. different url , for 'finished' warrants 
+    soup = BeautifulSoup(fd, 'lxml')
+    rows = soup.find_all('tr')
+    if len(rows)==0: 
+        logger.warning("No table row tag in file %s" % item.symbol)
+        return False
+    #row 0
+    td_elements = rows[0].find_all('td', recursive=False)
+    warrant_data = td_elements[0].string.strip()
+    if item.symbol != warrant_data: 
+        return False
+    item.type_code = select_warrant_type_code(item.symbol)
+    warrant_data = td_elements[1].string.strip()
+    if item.is_stock_type_1():
+        stock_item, created = Stock_Item.objects.get_or_create(symbol=warrant_data)
+    else:
+        stock_item, created = Gt_Stock_Item.objects.get_or_create(symbol=warrant_data)
+    item.target_stock = stock_item
+    item.target_symbol = stock_item.symbol     
+    #row 1
+    td_elements = rows[1].find_all('td', recursive=False)
+    warrant_data = td_elements[0].string.strip()
+    item.name = warrant_data        
+    #row 3
+    td_elements = rows[3].find_all('td', recursive=False)
+    warrant_data = td_elements[0].string.strip()
+    item.classification = get_warrant_classification(warrant_data[:2])  
+    warrant_data = td_elements[1].string.strip()
+    item.issued_volume = int(warrant_data.replace(',', ''))   
+    #row 5
+    td_elements = rows[5].find_all('td', recursive=False)
+    warrant_data = td_elements[0].string.strip() 
+    item.listed_date = convertToDate(warrant_data)   
+    #row 6
+    td_elements = rows[6].find_all('td', recursive=False)
+    warrant_data = td_elements[0].string.strip() 
+    item.expiration_date = convertToDate(warrant_data)
+    #row 7
+    td_elements = rows[7].find_all('td', recursive=False)
+    warrant_data = td_elements[0].string.strip() 
+    item.last_trading_date = convertToDate(warrant_data)
+    #row 8
+    td_elements = rows[8].find_all('td', recursive=False)
+    warrant_data = td_elements[1].string.strip() 
+    item.exercise_ratio = int(float(warrant_data.replace(',', '')))
+    #row 9
+    td_elements = rows[9].find_all('td', recursive=False)
+    warrant_data = td_elements[0].string.strip() 
+    item.strike_price = float(warrant_data.replace(',', '')) 
+    #row 11
+    td_elements = rows[11].find_all('td', recursive=False)
+    warrant_data = td_elements[0].string.strip() 
+    item.exercise_style = get_warrant_exercise_style(warrant_data)  
+    warrant_data = td_elements[1].string.strip() 
+    item.issuer = warrant_data
+#
     return True
 
 def twse_bulk_download_warrant_info_job():

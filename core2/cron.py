@@ -12,7 +12,7 @@ import time
 
 from core.cron import download_stock_info, process_stock_info, \
     download_warrant_info, process_warrant_info, bulk_download_warrant_info, \
-    bulk_process_warrant_info
+    bulk_process_warrant_info, manage_warrant_info_2
 from core.models import Cron_Job_Log, Trading_Date
 from core2.models import Gt_Trading_Downloaded, Gt_Trading, \
     Gt_Warrant_Item, Gt_Stock_Item, Gt_Summary_Price_Downloaded, \
@@ -166,6 +166,28 @@ def gt_process_warrant_info_job():
             item.save()
         job.save()
 
+def gt_manage_warrant_info_use_other_url_job():
+#different url , for 'finished' warrants 
+#only deal with items with parsing_error=True
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = gt_manage_warrant_info_use_other_url_job.__name__ 
+    try:    
+        items = Gt_Warrant_Item.objects.data_need_other_download_url() 
+        if manage_warrant_info_2(items, is_gt=True):
+            job.success()
+        else:
+            job.error_message = 'Download process runs with interruption'
+            raise Exception(job.error_message)
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        job.failed() 
+        raise 
+    finally:        
+        for item in items:
+            item.save()
+        job.save()
+        
 def gt_bulk_download_warrant_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
