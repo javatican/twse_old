@@ -12,17 +12,17 @@ import requests
 import sys
 import time
 
-from core.models import Cron_Job_Log, Twse_Trading_Downloaded, Twse_Trading, \
+from core.models import Cron_Job_Log, Twse_Trading, \
     Warrant_Item, Stock_Item, get_stock_item_type, get_warrant_exercise_style, \
-    get_warrant_classification, select_warrant_type_code, Twse_Summary_Price_Downloaded, \
+    get_warrant_classification, select_warrant_type_code, Twse_Summary_Price_Processed, \
     Index_Item, Index_Change_Info, Market_Summary_Type, Market_Summary, \
-    Stock_Up_Down_Stats, Twse_Trading_Warrant
+    Stock_Up_Down_Stats, Twse_Trading_Warrant, Twse_Trading_Processed
 from core2.models import Gt_Stock_Item, Gt_Warrant_Item
 from warrant_app.settings import TWSE_DOWNLOAD_1, TWSE_DOWNLOAD_2, \
     TWSE_DOWNLOAD_3, TWSE_DOWNLOAD_4, TWSE_DOWNLOAD_5, TWSE_TRADING_DOWNLOAD_URL, \
     TWSE_PRICE_DOWNLOAD_URL, TWSE_DOWNLOAD_0, TWSE_DOWNLOAD_A, \
     TWSE_DOWNLOAD_B, TWSE_DOWNLOAD_C, TWSE_DOWNLOAD_D, GT_DOWNLOAD_2, \
-    GT_DOWNLOAD_4, GT_DOWNLOAD_3
+    GT_DOWNLOAD_4, GT_DOWNLOAD_3, SLEEP_TIME_SHORT, SLEEP_TIME_LONG
 from warrant_app.utils import dateutil
 from warrant_app.utils.black_scholes import option_price_implied_volatility_call_black_scholes_newton, \
     option_price_implied_volatility_put_black_scholes_newton, \
@@ -39,22 +39,6 @@ from warrant_app.utils.warrant_util import check_if_warrant_item
 logger = logging.getLogger('warrant_app.cronjob')
 
 # Below code is one time use, so comment out.
- 
-# def migration_job():
-#     items = Twse_Trading.objects.filter(warrant_symbol__isnull=False).select_related('warrant_symbol')
-#     for item in items:
-#         create_trading_warrant(item)
-# 
-#         
-# def create_trading_warrant(from_item):
-#         instance = Twse_Trading_Warrant()
-#         for field in instance._meta.get_all_field_names(): 
-#             # make sure id is not copied...
-#             if field == 'id': continue
-#             if getattr(from_item, field, None):
-#                 setattr(instance, field, getattr(from_item, field))  
-#         instance.save()
-#         return instance
 # # below code uses bulk creation, should be more efficient than above code
 # # not tested yet
 # def batch_create_trading_warrant_job():
@@ -70,35 +54,17 @@ logger = logging.getLogger('warrant_app.cronjob')
 #         items_to_create.append(instance)
 #     Twse_Trading_Warrant.objects.bulk_create(items_to_create)
 #     
-    
-    
-# def _check_warrant_symbol():
-#     items = Warrant_Item.objects.all()
-#     for item in items:        
-#         if not check_if_warrant_item(item.symbol):
-#             print "correcting warrant item:  %s" % item.symbol
-#             stock_item=Stock_Item.objects.create(symbol=item.symbol)
-#             #
-#             for trading_record in Twse_Trading.objects.by_warrant_symbol(item):
-#                 print "update dealer trading record : %s" % trading_record.id
-#                 trading_record.warrant_symbol=None
-#                 trading_record.stock_symbol=stock_item
-#                 trading_record.save()
-#             item.delete()
-#             
 
-
-                
-def twse_download_stock_info_job():
+def twse_manage_stock_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = twse_download_stock_info_job.__name__ 
+    job.title = twse_manage_stock_info_job.__name__ 
     try:    
-        items = Stock_Item.objects.data_not_yet_download()
-        if download_stock_info(items):
+        items = Stock_Item.objects.data_not_ok()
+        if manage_stock_info(items):
             job.success()
         else:
-            job.error_message = 'Download process runs with interruption'
+            job.error_message = 'process runs with interruption'
             raise Exception(job.error_message)
     except: 
         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
@@ -108,8 +74,8 @@ def twse_download_stock_info_job():
         for item in items:
             item.save()
         job.save()
-                
-def download_stock_info(items, is_gt=False): 
+        
+def manage_stock_info(items, is_gt=False): 
     originUrl = 'http://mops.twse.com.tw/mops/web/t05st03'
     ajaxUrl = 'http://mops.twse.com.tw/mops/web/ajax_quickpgm' 
     try: 
@@ -117,7 +83,7 @@ def download_stock_info(items, is_gt=False):
         # HEAD requests ask for *just* the headers, which is all you need to grab the
         # session cookie
         session.head(originUrl)
-        gen = (item for item in items if item.data_downloaded == False)
+        gen = (item for item in items if item.data_ok == False)
         for item in gen:
             parameters = {'encodeURIComponent': 1,
                       'firstin':'true',
@@ -133,7 +99,7 @@ def download_stock_info(items, is_gt=False):
                                         data=parameters,
                                         headers={
                                                  'Referer': originUrl, })
-# default response encoding is ISO8859-1
+            # default response encoding is ISO8859-1
             httpResponse.encoding = "utf-8"
             # print httpResponse.text
             if is_gt:
@@ -141,49 +107,26 @@ def download_stock_info(items, is_gt=False):
             else:
                 filename = "%s/stock_info_%s" % (TWSE_DOWNLOAD_2, item.symbol)
             with codecs.open(filename, 'wb', encoding="utf8") as fd:
-                print >> fd, httpResponse.text           
-            item.data_downloaded = True
-            time.sleep(5)
+                print >> fd, httpResponse.text     
+            # process the file
+            with codecs.open(filename, 'r', encoding="utf8") as fd:
+                if _process_stock_info(item, fd): 
+                    item.data_ok = True
+                else:  
+                    logger.info("Error processing stock info : %s" % item.symbol)
+            time.sleep(SLEEP_TIME_SHORT)
         return True
     except requests.HTTPError, e:
         result = e.read()
         raise Exception(result) 
     except requests.ConnectionError:
         logger.info("*** Sleep 180 secs before trying downloading again")
-        time.sleep(180)
-        return download_stock_info(items, is_gt)
+        time.sleep(SLEEP_TIME_LONG)
+        return manage_stock_info(items, is_gt)
     except:
         raise
-        
-        
-def twse_process_stock_info_job():
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = twse_process_stock_info_job.__name__ 
-    items = []
-    try:    
-        items = Stock_Item.objects.need_to_process()
-        for item in items:            
-            filename = "%s/stock_info_%s" % (TWSE_DOWNLOAD_2, item.symbol)
-            try:
-                with codecs.open(filename, 'r', encoding="utf8") as fd:
-                    if process_stock_info(item, fd): 
-                        item.data_ok = True
-                    else: 
-                        item.parsing_error = True
-            except IOError:
-                item.data_downloaded = False
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        job.failed()
-        raise 
-    finally:
-        for item in items:
-            item.save()
-        job.save()
-        
-def process_stock_info(item, fd): 
+    
+def _process_stock_info(item, fd): 
     
     soup = BeautifulSoup(fd, 'lxml')
     table_element = soup.find(id='zoom') 
@@ -221,15 +164,14 @@ def process_stock_info(item, fd):
         return False
     return True
 
-
-def twse_download_warrant_info_job():
+def twse_manage_warrant_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = twse_download_warrant_info_job.__name__ 
+    job.title = twse_manage_warrant_info_job.__name__ 
 
     try:    
-        items = Warrant_Item.objects.data_not_yet_download()
-        if download_warrant_info(items):
+        items = Warrant_Item.objects.data_not_ok()
+        if manage_warrant_info(items):
             job.success()
         else:
             job.error_message = 'Download process runs with interruption'
@@ -242,8 +184,8 @@ def twse_download_warrant_info_job():
         for item in items:
             item.save()
         job.save()
-    
-def download_warrant_info(items, is_gt=False): 
+        
+def manage_warrant_info(items, is_gt=False): 
     originUrl = 'http://mops.twse.com.tw/mops/web/t90sbfa01'
     ajaxUrl = 'http://mops.twse.com.tw/mops/web/ajax_t90sbfa01' 
     try: 
@@ -251,7 +193,7 @@ def download_warrant_info(items, is_gt=False):
         # HEAD requests ask for *just* the headers, which is all you need to grab the
         # session cookie
         session.head(originUrl)
-        gen = (item for item in items if item.data_downloaded == False)
+        gen = (item for item in items if item.data_ok == False)
         for item in gen:
             type_code = select_warrant_type_code(item.symbol)
             parameters = {'encodeURIComponent': 1,
@@ -280,7 +222,7 @@ def download_warrant_info(items, is_gt=False):
                                         data=parameters,
                                         headers={
                                                  'Referer': originUrl, })
-# default response encoding is ISO8859-1
+            # default response encoding is ISO8859-1
             httpResponse.encoding = "utf-8"
             # print httpResponse.text
             if is_gt:
@@ -288,48 +230,26 @@ def download_warrant_info(items, is_gt=False):
             else:
                 filename = "%s/warrant_info_%s" % (TWSE_DOWNLOAD_4, item.symbol)
             with codecs.open(filename, 'wb', encoding="utf8") as fd:
-                print >> fd, httpResponse.text           
-            item.data_downloaded = True
-            time.sleep(5)
+                print >> fd, httpResponse.text 
+            # process data
+            with codecs.open(filename, 'r', encoding="utf8") as fd:                            
+                if _process_warrant_info(item, fd):                     
+                    item.data_ok = True
+                else:
+                    logger.info("Error processing warrant info : %s" % item.symbol)
+            time.sleep(SLEEP_TIME_SHORT)
         return True
     except requests.HTTPError, e:
         result = e.read()
         raise Exception(result) 
     except requests.ConnectionError:
         logger.info("*** Sleep 180 secs before trying downloading again")
-        time.sleep(180)
-        return download_warrant_info(items, is_gt)
+        time.sleep(SLEEP_TIME_LONG)
+        return manage_warrant_info(items, is_gt)
     except:
         raise
-    
-def twse_process_warrant_info_job():
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = twse_process_warrant_info_job.__name__ 
-    items = []
-    try:    
-        items = Warrant_Item.objects.need_to_process()
-        for item in items:            
-            filename = "%s/warrant_info_%s" % (TWSE_DOWNLOAD_4, item.symbol)
-            try:
-                with codecs.open(filename, 'r', encoding="utf8") as fd:                            
-                    if process_warrant_info(item, fd):                     
-                        item.data_ok = True
-                    else:
-                        item.parsing_error = True
-            except IOError:
-                item.data_downloaded = False
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        job.failed()
-        raise
-    finally:
-        for item in items:
-            item.save()
-        job.save()
-  
-def process_warrant_info(item, fd): 
+ 
+def _process_warrant_info(item, fd): 
     soup = BeautifulSoup(fd, 'lxml')
     tr_element = soup.find('tr', class_='even')
     if not tr_element: 
@@ -358,7 +278,7 @@ def process_warrant_info(item, fd):
         elif i == 11:
             item.issued_volume = int(warrant_data.replace(',', ''))   
         elif i == 12:       
-            if item.is_stock_type_1():
+            if item.is_twse_stock():
                 stock_item, created = Stock_Item.objects.get_or_create(symbol=warrant_data)
             else:
                 stock_item, created = Gt_Stock_Item.objects.get_or_create(symbol=warrant_data)
@@ -376,12 +296,11 @@ def process_warrant_info(item, fd):
       
 def twse_manage_warrant_info_use_other_url_job():
 #different url , for 'finished' warrants 
-#only deal with items with parsing_error=True
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
     job.title = twse_manage_warrant_info_use_other_url_job.__name__ 
     try:    
-        items = Warrant_Item.objects.data_need_other_download_url()
+        items = Warrant_Item.objects.data_not_ok()
         if manage_warrant_info_2(items):
             job.success()
         else:
@@ -398,7 +317,7 @@ def twse_manage_warrant_info_use_other_url_job():
         
 def manage_warrant_info_2(items, is_gt=False): 
     #different url , for 'finished' warrants 
-    gen = (item for item in items if item.parsing_error == True)
+    gen = (item for item in items if item.data_ok == False)
     try: 
         for item in gen:
             serviceUrl = 'http://www.cnyes.com/twstock/Wbasic/%s.htm' % item.symbol
@@ -413,33 +332,30 @@ def manage_warrant_info_2(items, is_gt=False):
                 table_element = soup.find(id='ctl00_ContentPlaceHolder1_htb1')
                 if table_element == None: 
                     logger.warning("No table tag in warrant info")
+                    time.sleep(SLEEP_TIME_SHORT)
                     continue
 #
                 for tag in table_element.find_all('tr'):
                     print >> fd, unicode(tag) 
-            #next do the process
-            try:
-                with codecs.open(filename, 'r', encoding="utf8") as fd:                            
-                    if process_warrant_info_2(item, fd):                     
-                        item.data_downloaded = True
-                        item.data_ok = True
-                        item.parsing_error = False
-            except IOError:
-                logger.warning("Error reading the warrant info file")
-                continue 
-            time.sleep(3)
+            #next do the process         
+            with codecs.open(filename, 'r', encoding="utf8") as fd:                            
+                if _process_warrant_info_2(item, fd):   
+                    item.data_ok = True
+                else:
+                    logger.info("Error processing warrant info : %s" % item.symbol)
+            time.sleep(SLEEP_TIME_SHORT)
         return True
     except requests.HTTPError, e:
         result = e.read()
         raise Exception(result) 
     except requests.ConnectionError:
         logger.info("*** Sleep 180 secs before trying downloading again")
-        time.sleep(180)
+        time.sleep(SLEEP_TIME_LONG)
         return manage_warrant_info_2(items, is_gt)
     except:
         raise
           
-def process_warrant_info_2(item, fd): 
+def _process_warrant_info_2(item, fd): 
     #go along with manage_warrant_info_2, ie. different url , for 'finished' warrants 
     soup = BeautifulSoup(fd, 'lxml')
     rows = soup.find_all('tr')
@@ -453,7 +369,7 @@ def process_warrant_info_2(item, fd):
         return False
     item.type_code = select_warrant_type_code(item.symbol)
     warrant_data = td_elements[1].string.strip()
-    if item.is_stock_type_1():
+    if item.is_twse_stock():
         stock_item, created = Stock_Item.objects.get_or_create(symbol=warrant_data)
     else:
         stock_item, created = Gt_Stock_Item.objects.get_or_create(symbol=warrant_data)
@@ -568,18 +484,17 @@ def bulk_download_warrant_info(items,is_gt=False):
             with codecs.open(filename, 'wb', encoding="utf8") as fd:
                 print >> fd, httpResponse.text           
             item['data_downloaded'] = True
-            time.sleep(5)
+            time.sleep(SLEEP_TIME_SHORT)
         return True
     except requests.HTTPError, e:
         result = e.read()
         raise Exception(result) 
     except requests.ConnectionError:
         logger.info("*** Sleep 180 secs before trying downloading again")
-        time.sleep(180)
+        time.sleep(SLEEP_TIME_LONG)
         return bulk_download_warrant_info(items, is_gt)
     except:
         raise
-        
         
 def twse_bulk_process_warrant_info_job():
     log_message(datetime.datetime.now())
@@ -675,7 +590,6 @@ def _process_td_elements(tr_element, stock_item, is_gt=False):
         return False
     # query and update warrant item
     warrant_item.data_ok = True
-    warrant_item.data_downloaded = True
     warrant_item.save()
     return True
 
@@ -723,8 +637,6 @@ def twse_update_etf_stock_info_job():
                     stock.short_name = data_item['short_name']
                     stock.etf_target = data_item['etf_target']
                     stock.data_ok = True
-                    stock.data_download = True
-                    stock.parsing_error = False
                     stock.save()
                     logger.info("ETF stock info %s is updated" % symbol.encode(encoding='utf-8'))
                 except Stock_Item.DoesNotExist:
@@ -736,98 +648,29 @@ def twse_update_etf_stock_info_job():
         raise 
     finally:
         job.save()
-        
-def twse_daily_trading_download_job(q_date=None):
+#
+def twse_daily_trading_job(qdate=None):
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = twse_daily_trading_download_job.__name__  
+    job.title = twse_daily_trading_job.__name__  
     try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y/%m/%d")
-        # check if downloaded
-        try:
-            ob = Twse_Trading_Downloaded.objects.by_trading_date(q_date)
-            # downloaded previously(but may contain no data yet), and then check if data is available
-            if(not ob.data_available):
-                # data is not available, so retry download
-                if _get_day_trading(qdate):
-                    ob.data_available = True
-                    ob.save()
-                else:
-                    job.error_message = 'Trading data are not yet available'
-                    raise Exception(job.error_message)
-        except Twse_Trading_Downloaded.DoesNotExist:
-            # not previously downloaded
-            if _get_day_trading(qdate):
-                Twse_Trading_Downloaded.objects.create(trading_date=q_date)
+        if not qdate: 
+            qdate = datetime.datetime.now().date()
+        qdate_str = qdate.strftime("%Y/%m/%d")
+        # check if processed
+        if Twse_Trading_Processed.objects.check_processed(qdate):
+            job.error_message = 'Trading data for date %s have already been processed.' % qdate_str
+            raise Exception(job.error_message)
+        if _get_day_trading(qdate_str):
+            #call processing here
+            if _process_day_trading(qdate_str):
+                Twse_Trading_Processed.objects.create(trading_date=qdate)
             else:
-                # data is not yet available
-                Twse_Trading_Downloaded.objects.create(trading_date=q_date, data_available=False)
-                job.error_message = 'Trading data are not yet available'
+                job.error_message = 'Trading data for date %s have problems when processing.' % qdate_str
                 raise Exception(job.error_message)
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
-#             
-def _get_day_trading(qdate):
-    datarow_count = 0 
-    # used to flag if data is available (if count >0)
-    serviceUrl = TWSE_TRADING_DOWNLOAD_URL
-    # need to call the TWSE using ROC year, so transform qdate to roc year
-    qdate_roc = western_to_roc_year(qdate)
-    parameters = {'input_date': qdate_roc, 'select2':'ALL', 'sorting':'by_stkno', 'login_btn':''}
-    try:        
-        httpResponse = requests.post(serviceUrl, data=parameters, stream=True)
-        httpResponse.encoding = "big5"
-    except requests.HTTPError, e:
-        result = e.read()
-        raise Exception(result)
-    filename = "%s/trading_%s" % (TWSE_DOWNLOAD_1, re.sub('/', '', qdate))
-    with codecs.open(filename, 'wb', encoding="utf8") as fd:
-        for chunk in httpResponse.iter_content(chunk_size=1000, decode_unicode=True):
-            fd.write(chunk)
-    filename2 = "%s_datarow" % filename
-    with codecs.open(filename2, 'wb', encoding="utf8") as fd2:
-        with codecs.open(filename, 'r', encoding="utf8") as fd3:
-            soup = BeautifulSoup(fd3, 'lxml')
-            for tag in soup.find_all('tr', class_='basic2'):
-                datarow_count += 1
-                print >> fd2, unicode(tag)
-    if(datarow_count == 0):
-        logger.warning("No trading data available yet")
-        os.remove(filename)
-        os.remove(filename2)
-        return False
-    else:
-        return True
-    
-def twse_daily_trading_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = twse_daily_trading_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # check if downloaded and available
-        try:
-            ob = Twse_Trading_Downloaded.objects.available_and_unprocessed(q_date)
-            if _process_day_trading(qdate):
-                ob.is_processed = True
-                ob.save()
-        except Twse_Trading_Downloaded.DoesNotExist:
-            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
+        else:
+            job.error_message = 'Trading data for date %s have problems when downloading.' % qdate_str
             raise Exception(job.error_message)
         transaction.commit()
         job.success()
@@ -840,16 +683,54 @@ def twse_daily_trading_process_job(q_date=None):
         job.save()
         transaction.commit()
         transaction.set_autocommit(True)
+            
+def _get_day_trading(qdate_str):
+    logger.info("downloading twse trading data...")
+    datarow_count = 0 
+    # used to flag if data is available (if count >0)
+    serviceUrl = TWSE_TRADING_DOWNLOAD_URL
+    # need to call the TWSE using ROC year, so transform qdate to roc year
+    qdate_str_roc = western_to_roc_year(qdate_str)
+    parameters = {'input_date': qdate_str_roc, 
+                  'select2':'ALL', 
+                  'sorting':'by_stkno', 
+                  'login_btn':''}
+    try:        
+        httpResponse = requests.post(serviceUrl, data=parameters, stream=True)
+        httpResponse.encoding = "big5"
+    except requests.HTTPError, e:
+        result = e.read()
+        raise Exception(result)
+    filename = "%s/trading_%s" % (TWSE_DOWNLOAD_1, re.sub('/', '', qdate_str))
+    with codecs.open(filename, 'wb', encoding="utf8") as fd:
+        for chunk in httpResponse.iter_content(chunk_size=1000, decode_unicode=True):
+            fd.write(chunk)
+    filename2 = "%s_datarow" % filename
+    with codecs.open(filename2, 'wb', encoding="utf8") as fd2:
+        with codecs.open(filename, 'r', encoding="utf8") as fd3:
+            soup = BeautifulSoup(fd3, 'lxml')
+            for tag in soup.find_all('tr', class_='basic2'):
+                datarow_count += 1
+                print >> fd2, unicode(tag)
+    if(datarow_count <= 1):
+        logger.warning("No trading data available yet")
+        os.remove(filename)
+        os.remove(filename2)
+        return False
+    else:
+        logger.info("There are %s trading records in file" % (datarow_count-1))
+        return True
     
-def _process_day_trading(qdate):
-    filename = "%s/trading_%s_datarow" % (TWSE_DOWNLOAD_1, qdate)
+def _process_day_trading(qdate_str):
+    logger.info("processing twse trading data...")
+    filename = "%s/trading_%s_datarow" % (TWSE_DOWNLOAD_1, re.sub('/', '', qdate_str))
     trading_items_to_save = []
     trading_warrant_items_to_save = []
     record_stored = 0
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr', class_='basic2')
-        logger.info("There are %s trading records in file" % (len(rows)-1))
+        logger.info("Reading %s trading records in file" % (len(rows)-1))
         for row in rows[1:]:
             i = 0
             dt_item = None
@@ -866,7 +747,7 @@ def _process_day_trading(qdate):
                         dt_item = Twse_Trading()
                         trading_items_to_save.append(dt_item)
                         dt_item.stock_symbol = stock_item
-                    dt_item.trading_date = dateutil.convertToDate(qdate)
+                    dt_item.trading_date = dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d')
                 elif i == 2:
                     dt_item.fi_buy = int(dt_data.replace(',', ''))                    
                 elif i == 3:
@@ -896,38 +777,41 @@ def _process_day_trading(qdate):
     count2 = len(trading_items_to_save) 
     if  count1 > 0: Twse_Trading_Warrant.objects.bulk_create(trading_warrant_items_to_save)
     if  count2 > 0: Twse_Trading.objects.bulk_create(trading_items_to_save)
-    logger.info("There are %s trading records stored ( %s warrant items, %s stock items)" % (record_stored, count1, count2))
+    logger.info("There are %s trading records processed ( %s warrant items, %s stock items)" % (record_stored, count1, count2))
     return True
-
-def twse_daily_summary_price_download_job(q_date=None):
+#
+def twse_daily_summary_price_job(qdate=None):
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = twse_daily_summary_price_download_job.__name__  
+    job.title = twse_daily_summary_price_job.__name__  
     try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y/%m/%d")
-        # check if downloaded
-        try:
-            ob = Twse_Summary_Price_Downloaded.objects.by_trading_date(q_date)
-            # downloaded previously, and then check if data is available
-            if(not ob.data_available):
-                # data is not available, so retry download
-                if _get_market_summary_and_day_price(qdate):
-                    ob.data_available = True
-                    ob.save()
+        if not qdate: 
+            qdate = datetime.datetime.now().date()
+        qdate_str = qdate.strftime("%Y/%m/%d")
+        # check if processed
+        if Twse_Summary_Price_Processed.objects.check_processed(qdate):
+            job.error_message = 'Summary and price data for date %s have already been processed.' % qdate_str
+            raise Exception(job.error_message)
+        # for any specific date, the twse_daily_trading_job need to be run first
+        # so check if above mentioned job has been done
+        if not Twse_Trading_Processed.objects.check_processed(qdate):
+            job.error_message = "Trading data need to be processed before summary/price data"
+            raise Exception(job.error_message)
+        else:
+            if _get_summary_and_price(qdate_str):
+                # processing 
+                if (_process_price(qdate_str) and 
+                _process_index(qdate_str) and 
+                _process_tri_index(qdate_str) and 
+                _process_summary(qdate_str) and 
+                _process_updown_stats(qdate_str)):
+                    Twse_Summary_Price_Processed.objects.create(trading_date=qdate)
                 else:
-                    job.error_message = 'Price/summary data are not yet available'
+                    job.error_message = 'Summary and price data for date %s have problems when processing.' % qdate_str
                     raise Exception(job.error_message)
-        except Twse_Summary_Price_Downloaded.DoesNotExist:
-            # not previously downloaded
-            if _get_market_summary_and_day_price(qdate):
-                Twse_Summary_Price_Downloaded.objects.create(trading_date=q_date)
             else:
-                # data is not yet available
-                Twse_Summary_Price_Downloaded.objects.create(trading_date=q_date, data_available=False)
-                job.error_message = 'Price/summary data are not yet available'
+                job.error_message = 'Summary and price data for date %s have problems when downloading.' % qdate_str
                 raise Exception(job.error_message)
         transaction.commit()
         job.success()
@@ -940,8 +824,9 @@ def twse_daily_summary_price_download_job(q_date=None):
         job.save()
         transaction.commit()
         transaction.set_autocommit(True)
-#
-def _get_market_summary_and_day_price(qdate):
+        
+def _get_summary_and_price(qdate_str):
+    logger.info("downloading twse summary and price data...")
     # below are used to flag if data is available (if count >0)
     datarow_count_1a = 0 
     datarow_count_1b = 0 
@@ -951,22 +836,24 @@ def _get_market_summary_and_day_price(qdate):
 #
     serviceUrl = TWSE_PRICE_DOWNLOAD_URL
     # need to call the TWSE using ROC year, so transform qdate to roc year
-    qdate_roc = western_to_roc_year(qdate)
-    parameters = {'qdate': qdate_roc, 'selectType':'ALL', 'download':''}
+    qdate_str_roc = western_to_roc_year(qdate_str)
+    parameters = {'qdate': qdate_str_roc, 
+                  'selectType':'ALL', 
+                  'download':''}
     try:        
         httpResponse = requests.post(serviceUrl, data=parameters, stream=True)
         httpResponse.encoding = "utf-8"
     except requests.HTTPError, e:
         result = e.read()
         raise Exception(result)
-    filename = "%s/price_%s" % (TWSE_DOWNLOAD_0, re.sub('/', '', qdate))
+    filename = "%s/price_%s" % (TWSE_DOWNLOAD_0, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'wb', encoding="utf8") as fd:
         for chunk in httpResponse.iter_content(chunk_size=1000, decode_unicode=True):
             fd.write(chunk)            
-    filename1a = "%s/twse_index_%s" % (TWSE_DOWNLOAD_A, re.sub('/', '', qdate))
-    filename1b = "%s/twse_total_return_index_%s" % (TWSE_DOWNLOAD_B, re.sub('/', '', qdate))
-    filename1c = "%s/market_summary_%s" % (TWSE_DOWNLOAD_C, re.sub('/', '', qdate))
-    filename1d = "%s/market_up_down_stats_%s" % (TWSE_DOWNLOAD_D, re.sub('/', '', qdate))
+    filename1a = "%s/twse_index_%s" % (TWSE_DOWNLOAD_A, re.sub('/', '', qdate_str))
+    filename1b = "%s/twse_total_return_index_%s" % (TWSE_DOWNLOAD_B, re.sub('/', '', qdate_str))
+    filename1c = "%s/market_summary_%s" % (TWSE_DOWNLOAD_C, re.sub('/', '', qdate_str))
+    filename1d = "%s/market_up_down_stats_%s" % (TWSE_DOWNLOAD_D, re.sub('/', '', qdate_str))
     filename2 = "%s_datarow" % filename
     with codecs.open(filename, 'r', encoding="utf8") as fd3:
         soup = BeautifulSoup(fd3, 'lxml')
@@ -1004,8 +891,9 @@ def _get_market_summary_and_day_price(qdate):
             for tag in table_elements[1].find_all('tr'):
                 datarow_count2 += 1
                 print >> fd2, unicode(tag)
-        logger.info("%s price records downloaded" % datarow_count2)
+        logger.info("%s price records downloaded" % (datarow_count2-2))
     if(datarow_count_1a == 0 or datarow_count_1b == 0 or datarow_count_1c == 0 or datarow_count_1d == 0 or datarow_count2 == 0):
+        logger.warning("Summary or price data are not available yet")
         os.remove(filename)
         os.remove(filename1a)
         os.remove(filename1b)
@@ -1014,123 +902,12 @@ def _get_market_summary_and_day_price(qdate):
         os.remove(filename2)
         return False
     else:
+        logger.info("Finish downloading summary and price records")
         return True
-
-        
-_allow_partially_run = False
-
-def twse_daily_summary_price_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = twse_daily_summary_price_process_job.__name__ 
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # for any specific date, the twse_daily_trading_process_job need to be run first
-        # so check if above mentioned job has been done
-        if not Twse_Trading_Downloaded.objects.check_processed(q_date):
-            job.error_message = "Trading data need to be processed before price data"
-            raise Exception(job.error_message)
-        else:
-            try:
-                # check if downloaded and available
-                ob = Twse_Summary_Price_Downloaded.objects.available_and_price_unprocessed(q_date)
-                if _process_day_price(qdate):
-                    ob.price_processed = True
-                    ob.save()
-            except Twse_Summary_Price_Downloaded.DoesNotExist:               
-                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-                if not _allow_partially_run: raise Exception(job.error_message)
-                # check if downloaded and available
-            try:
-                ob = Twse_Summary_Price_Downloaded.objects.available_and_index_unprocessed(q_date)
-                if _process_day_index(qdate):
-                    ob.index_processed = True
-                    ob.save()
-            except Twse_Summary_Price_Downloaded.DoesNotExist:
-                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-                if not _allow_partially_run: raise Exception(job.error_message)
-            try:
-                ob = Twse_Summary_Price_Downloaded.objects.available_and_tri_index_unprocessed(q_date)
-                if _process_day_tri_index(qdate):
-                    ob.tri_index_processed = True
-                    ob.save()
-            except Twse_Summary_Price_Downloaded.DoesNotExist:
-                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-                if not _allow_partially_run: raise Exception(job.error_message) 
-            try:
-                ob = Twse_Summary_Price_Downloaded.objects.available_and_summary_unprocessed(q_date)
-                if _process_day_summary(qdate):
-                    ob.summary_processed = True
-                    ob.save()
-            except Twse_Summary_Price_Downloaded.DoesNotExist:
-                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-                if not _allow_partially_run: raise Exception(job.error_message)      
-            try:
-                ob = Twse_Summary_Price_Downloaded.objects.available_and_updown_unprocessed(q_date)
-                if _process_day_updown_stats(qdate):
-                    ob.updown_processed = True
-                    ob.save()
-            except Twse_Summary_Price_Downloaded.DoesNotExist:
-                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-                if not _allow_partially_run: raise Exception(job.error_message)      
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
-
-def twse_daily_price_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = twse_daily_price_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # for any specific date, the twse_daily_trading_process_job need to be run first
-        # so check if above mentioned job has been done
-        if not Twse_Trading_Downloaded.objects.check_processed(q_date):
-            job.error_message = "Trading data need to be processed before price data"
-            raise Exception(job.error_message)
-        else:
-            try:
-                # check if downloaded and available
-                ob = Twse_Summary_Price_Downloaded.objects.available_and_price_unprocessed(q_date)
-                if _process_day_price(qdate):
-                    ob.price_processed = True
-                    ob.save()
-            except Twse_Summary_Price_Downloaded.DoesNotExist:               
-                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-                if not _allow_partially_run: raise Exception(job.error_message)
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
-        
-def check_up_or_down(data):
-    if data == u'＋': return 1
-    elif data == u'－': return -1
-    else: return 0
     
-def _process_day_price(qdate):
-    filename = "%s/price_%s_datarow" % (TWSE_DOWNLOAD_0, qdate)
+def _process_price(qdate_str):
+    logger.info("processing twse price data...")
+    filename = "%s/price_%s_datarow" % (TWSE_DOWNLOAD_0, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr')
@@ -1156,11 +933,11 @@ def _process_day_price(qdate):
                     # create model objects
                     if check_if_warrant_item(symbol):
                         warrant_item, created = Warrant_Item.objects.get_or_create(symbol=symbol)
-                        dt_item, created = Twse_Trading_Warrant.objects.get_or_create(warrant_symbol=warrant_item, trading_date=dateutil.convertToDate(qdate))
+                        dt_item, created = Twse_Trading_Warrant.objects.get_or_create(warrant_symbol=warrant_item, trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d'))
                         warrant_count+=1
                     else:                  
                         stock_item, created = Stock_Item.objects.get_or_create(symbol=symbol)
-                        dt_item, created = Twse_Trading.objects.get_or_create(stock_symbol=stock_item, trading_date=dateutil.convertToDate(qdate))                  
+                        dt_item, created = Twse_Trading.objects.get_or_create(stock_symbol=stock_item, trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d'))                  
                         stock_count+=1
                     dt_item.trade_volume = trade_volume                 
                 elif i == 3:
@@ -1207,42 +984,12 @@ def _process_day_price(qdate):
             if dt_item: 
                 dt_item.save()
                 record_stored += 1
-        logger.info("There are %s price records stored ( %s warrant items, %s stock items)" % (record_stored, warrant_count, stock_count))
+        logger.info("There are %s price records processed ( %s warrant items, %s stock items)" % (record_stored, warrant_count, stock_count))
     return True
-
-
-def twse_daily_index_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = twse_daily_index_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # check if downloaded and available
-        try:
-            ob = Twse_Summary_Price_Downloaded.objects.available_and_index_unprocessed(q_date)
-            if _process_day_index(qdate):
-                ob.index_processed = True
-                ob.save()
-        except Twse_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-            if not _allow_partially_run: raise Exception(job.error_message)
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
-        
-def _process_day_index(qdate):
-    filename = "%s/twse_index_%s" % (TWSE_DOWNLOAD_A, qdate)
+       
+def _process_index(qdate_str):
+    logger.info("processing twse index data...")
+    filename = "%s/twse_index_%s" % (TWSE_DOWNLOAD_A, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr')
@@ -1259,7 +1006,7 @@ def _process_day_index(qdate):
                     index_item, created = Index_Item.objects.get_or_create(name=dt_data)
                     dt_item = Index_Change_Info()
                     dt_item.twse_index=index_item
-                    dt_item.trading_date=dateutil.convertToDate(qdate)             
+                    dt_item.trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d')             
                 elif i == 1: 
                     dt_item.closing_index = float(dt_data.replace(',', ''))                
                 elif i == 2:
@@ -1276,41 +1023,12 @@ def _process_day_index(qdate):
             if dt_item: 
                 dt_item.save()
                 record_stored += 1
-        logger.info("There are %s index records stored." % record_stored)
+        logger.info("There are %s index records processed." % record_stored)
     return True
-
-def twse_daily_tri_index_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = twse_daily_tri_index_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # check if downloaded and available
-        try:
-            ob = Twse_Summary_Price_Downloaded.objects.available_and_tri_index_unprocessed(q_date)
-            if _process_day_tri_index(qdate):
-                ob.tri_index_processed = True
-                ob.save()
-        except Twse_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-            if not _allow_partially_run: raise Exception(job.error_message)   
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
-        
-def _process_day_tri_index(qdate):
-    filename = "%s/twse_total_return_index_%s" % (TWSE_DOWNLOAD_B, qdate)
+       
+def _process_tri_index(qdate_str):
+    logger.info("processing twse total return index data...")
+    filename = "%s/twse_total_return_index_%s" % (TWSE_DOWNLOAD_B, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr')
@@ -1327,7 +1045,7 @@ def _process_day_tri_index(qdate):
                     index_item, created = Index_Item.objects.get_or_create(name=dt_data, is_total_return_index=True)
                     dt_item = Index_Change_Info()
                     dt_item.twse_index=index_item
-                    dt_item.trading_date=dateutil.convertToDate(qdate)  
+                    dt_item.trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d')  
                 elif i == 1:
                     dt_item.closing_index = float(dt_data.replace(',', ''))                         
                 elif i == 2:
@@ -1344,41 +1062,12 @@ def _process_day_tri_index(qdate):
             if dt_item: 
                 dt_item.save()
                 record_stored += 1
-        logger.info("There are %s tri index records stored." % record_stored)
+        logger.info("There are %s tri index records processed." % record_stored)
     return True
-
-def twse_daily_summary_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = twse_daily_summary_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # check if downloaded and available
-        try:
-            ob = Twse_Summary_Price_Downloaded.objects.available_and_summary_unprocessed(q_date)
-            if _process_day_summary(qdate):
-                ob.summary_processed = True
-                ob.save()
-        except Twse_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-            if not _allow_partially_run: raise Exception(job.error_message)
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
         
-def _process_day_summary(qdate):
-    filename = "%s/market_summary_%s" % (TWSE_DOWNLOAD_C, qdate)
+def _process_summary(qdate_str):    
+    logger.info("processing twse market summary data...")
+    filename = "%s/market_summary_%s" % (TWSE_DOWNLOAD_C, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr')
@@ -1394,7 +1083,7 @@ def _process_day_summary(qdate):
                     type_item, created = Market_Summary_Type.objects.get_or_create(name=dt_data)
                     dt_item = Market_Summary()
                     dt_item.summary_type=type_item
-                    dt_item.trading_date=dateutil.convertToDate(qdate)  
+                    dt_item.trading_date=dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
                 elif i == 1: 
                     dt_item.trade_value = float(dt_data.replace(',', '')) 
                 elif i == 2:
@@ -1405,54 +1094,19 @@ def _process_day_summary(qdate):
             if dt_item: 
                 dt_item.save()
                 record_stored += 1
-        logger.info("There are %s summary records stored." % record_stored)
+        logger.info("There are %s summary records processed." % record_stored)
     return True
-
-def twse_daily_updown_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = twse_daily_updown_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # check if downloaded and available
-        try:
-            ob = Twse_Summary_Price_Downloaded.objects.available_and_updown_unprocessed(q_date)
-            if _process_day_updown_stats(qdate):
-                ob.updown_processed = True
-                ob.save()
-        except Twse_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-            if not _allow_partially_run: raise Exception(job.error_message)  
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
         
-def _split_string(s_data):
-    pos = s_data.find('(')
-    part1 = s_data[:pos]
-    part2 = s_data[pos + 1:len(s_data) - 1]
-    return (part1, part2)
-
-def _process_day_updown_stats(qdate):
-    filename = "%s/market_up_down_stats_%s" % (TWSE_DOWNLOAD_D, qdate)
+def _process_updown_stats(qdate_str):
+    logger.info("processing twse up/down stats data...")
+    filename = "%s/market_up_down_stats_%s" % (TWSE_DOWNLOAD_D, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr')
         logger.info("There are %s up_down_stats records in file." % len(rows))
         #
         dt_item = Stock_Up_Down_Stats()
-        dt_item.trading_date=dateutil.convertToDate(qdate)  
+        dt_item.trading_date=dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
         # process rows[0]
         cells = rows[0].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
@@ -1484,8 +1138,19 @@ def _process_day_updown_stats(qdate):
         dt_data = cells[2].string.strip().replace(',', '')
         dt_item.stock_na = dt_data
         dt_item.save()
+    logger.info("Twse up/down stats data processed...")
     return True
 
+def check_up_or_down(data):
+    if data == u'＋': return 1
+    elif data == u'－': return -1
+    else: return 0
+    
+def _split_string(s_data):
+    pos = s_data.find('(')
+    part1 = s_data[:pos]
+    part2 = s_data[pos + 1:len(s_data) - 1]
+    return (part1, part2)
 
 def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
     # get the warrant_item and trading_warrant and target_stock model instances
@@ -1531,4 +1196,3 @@ def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
     except: 
         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
         raise
-    

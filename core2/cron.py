@@ -8,18 +8,16 @@ import os
 import re
 import requests
 import sys
-import time
 
-from core.cron import download_stock_info, process_stock_info, \
-    download_warrant_info, process_warrant_info, bulk_download_warrant_info, \
-    bulk_process_warrant_info, manage_warrant_info_2
+from core.cron import bulk_download_warrant_info, \
+    bulk_process_warrant_info, manage_warrant_info_2, manage_stock_info, \
+    manage_warrant_info
 from core.models import Cron_Job_Log, Trading_Date
-from core2.models import Gt_Trading_Downloaded, Gt_Trading, \
-    Gt_Warrant_Item, Gt_Stock_Item, Gt_Summary_Price_Downloaded, \
+from core2.models import Gt_Trading, Gt_Warrant_Item, Gt_Stock_Item, \
     Gt_Market_Summary_Type, Gt_Market_Summary, \
-    Gt_Market_Highlight, Gt_Trading_Warrant
-from warrant_app.settings import  GT_DOWNLOAD_2, \
-    GT_DOWNLOAD_4, GT_DOWNLOAD_3, TPEX_TRADING_DOWNLOAD_URL, GT_DOWNLOAD_1, \
+    Gt_Market_Highlight, Gt_Trading_Warrant, Gt_Trading_Processed, \
+    Gt_Summary_Price_Processed
+from warrant_app.settings import GT_DOWNLOAD_3, TPEX_TRADING_DOWNLOAD_URL, GT_DOWNLOAD_1, \
     TPEX_STATS_DOWNLOAD_URL, GT_DOWNLOAD_C, TPEX_HIGHLIGHT_DOWNLOAD_URL, \
     GT_DOWNLOAD_D, TPEX_PRICE_DOWNLOAD_URL, GT_DOWNLOAD_0
 from warrant_app.utils import dateutil
@@ -35,9 +33,9 @@ logger = logging.getLogger('warrant_app.cronjob')
 # below function is called once to exact twse trading date since 2014/1
 def _download_trading_date():
     serviceUrl = 'http://www.tpex.org.tw/web/stock/aftertrading/daily_trading_index/st41_print.php'
-    year=104
-    for month in range(2,3):
-        year_month = "%s/%s" % (year,month)
+    year = 104
+    for month in range(2, 3):
+        year_month = "%s/%s" % (year, month)
         parameters = {'d': year_month, 'l':'zh-tw', 's':'0,asc,0'}
         try:        
             httpResponse = requests.get(serviceUrl, params=parameters, stream=True)
@@ -49,38 +47,39 @@ def _download_trading_date():
         soup = BeautifulSoup(httpResponse.text, 'lxml')
         tbody_element = soup.find('tbody')
         tr_list = tbody_element.find_all('tr')
-        j=0
+        j = 0
         for row in tr_list:
-            i=0
+            i = 0
             for td_element in row.find_all('td', recursive=False):
                 dt_data = td_element.string.strip()
                 if i == 0:
                     tdate = Trading_Date()
                     tdate.trading_date = roc_year_to_western(dt_data)
-                    #date.weekday(): Return the day of the week as an integer, where Monday is 0 and Sunday is 6.
-                    tdate.day_of_week= tdate.trading_date.weekday()+1
-                    if j==0:
-                        #first trading date of the month
-                        tdate.first_trading_day_of_month=True
-                    if j==len(tr_list)-1:
-                        tdate.last_trading_day_of_month=True
+                    # date.weekday(): Return the day of the week as an integer, where Monday is 0 and Sunday is 6.
+                    tdate.day_of_week = tdate.trading_date.weekday() + 1
+                    if j == 0:
+                        # first trading date of the month
+                        tdate.first_trading_day_of_month = True
+                    if j == len(tr_list) - 1:
+                        tdate.last_trading_day_of_month = True
                     if is_third_wednesday(tdate.trading_date):
-                        tdate.is_future_delivery_day=True
+                        tdate.is_future_delivery_day = True
                     tdate.save() 
                     break
-                i+=1
+                i += 1
 
-            j+=1
-def gt_download_stock_info_job():
+            j += 1
+
+def gt_manage_stock_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = gt_download_stock_info_job.__name__ 
+    job.title = gt_manage_stock_info_job.__name__ 
     try:    
-        items = Gt_Stock_Item.objects.data_not_yet_download()
-        if download_stock_info(items, is_gt=True):
+        items = Gt_Stock_Item.objects.data_not_ok()
+        if manage_stock_info(items, is_gt=True):
             job.success()
         else:
-            job.error_message = 'Download process runs with interruption'
+            job.error_message = 'process runs with interruption'
             raise Exception(job.error_message)
     except: 
         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
@@ -91,41 +90,14 @@ def gt_download_stock_info_job():
             item.save()
         job.save()
         
-def gt_process_stock_info_job():
+def gt_manage_warrant_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = gt_process_stock_info_job.__name__ 
-    items = []
-    try:    
-        items = Gt_Stock_Item.objects.need_to_process()
-        for item in items:            
-            filename = "%s/stock_info_%s" % (GT_DOWNLOAD_2, item.symbol)
-            try:
-                with codecs.open(filename, 'r', encoding="utf8") as fd:
-                    if process_stock_info(item, fd): 
-                        item.data_ok = True
-                    else: 
-                        item.parsing_error = True
-            except IOError:
-                item.data_downloaded = False
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        job.failed()
-        raise 
-    finally:
-        for item in items:
-            item.save()
-        job.save()
-
-def gt_download_warrant_info_job():
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = gt_download_warrant_info_job.__name__ 
+    job.title = gt_manage_warrant_info_job.__name__ 
 
     try:    
-        items = Gt_Warrant_Item.objects.data_not_yet_download()
-        if download_warrant_info(items,is_gt=True):
+        items = Gt_Warrant_Item.objects.data_not_ok()
+        if manage_warrant_info(items, is_gt=True):
             job.success()
         else:
             job.error_message = 'Download process runs with interruption'
@@ -139,41 +111,13 @@ def gt_download_warrant_info_job():
             item.save()
         job.save()
 
-def gt_process_warrant_info_job():
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = gt_process_warrant_info_job.__name__ 
-    items = []
-    try:    
-        items = Gt_Warrant_Item.objects.need_to_process()
-        for item in items:            
-            filename = "%s/warrant_info_%s" % (GT_DOWNLOAD_4, item.symbol)
-            try:
-                with codecs.open(filename, 'r', encoding="utf8") as fd:                            
-                    if process_warrant_info(item, fd):                     
-                        item.data_ok = True
-                    else:
-                        item.parsing_error = True
-            except IOError:
-                item.data_downloaded = False
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        job.failed()
-        raise
-    finally:
-        for item in items:
-            item.save()
-        job.save()
-
 def gt_manage_warrant_info_use_other_url_job():
-#different url , for 'finished' warrants 
-#only deal with items with parsing_error=True
+# different url , for 'finished' warrants 
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
     job.title = gt_manage_warrant_info_use_other_url_job.__name__ 
     try:    
-        items = Gt_Warrant_Item.objects.data_need_other_download_url() 
+        items = Gt_Warrant_Item.objects.data_not_ok() 
         if manage_warrant_info_2(items, is_gt=True):
             job.success()
         else:
@@ -232,37 +176,29 @@ def gt_bulk_process_warrant_info_job():
         raise
     finally:
         job.save()
-        
-def gt_daily_trading_download_job(q_date=None):
+def gt_daily_trading_job(qdate=None):
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = gt_daily_trading_download_job.__name__  
+    job.title = gt_daily_trading_job.__name__  
     try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y/%m/%d")
-        # check if downloaded
-        try:
-            ob = Gt_Trading_Downloaded.objects.by_trading_date(q_date)
-            # downloaded previously(but may contain no data yet), and then check if data is available
-            if(not ob.data_available):
-                # data is not available, so retry download
-                if _get_day_trading(qdate):
-                    ob.data_available = True
-                    ob.save()
-                else:
-                    job.error_message = 'Trading data are not yet available'
-                    raise Exception(job.error_message)
-        except Gt_Trading_Downloaded.DoesNotExist:
-            # not previously downloaded
-            if _get_day_trading(qdate):
-                Gt_Trading_Downloaded.objects.create(trading_date=q_date)
+        if not qdate: 
+            qdate = datetime.datetime.now().date()
+        qdate_str = qdate.strftime("%Y/%m/%d")
+        # check if processed
+        if Gt_Trading_Processed.objects.check_processed(qdate):
+            job.error_message = 'Trading data for date %s have already been processed.' % qdate_str
+            raise Exception(job.error_message)
+        if _get_day_trading(qdate_str):
+            #call processing here
+            if _process_day_trading(qdate_str):
+                Gt_Trading_Processed.objects.create(trading_date=qdate)
             else:
-                # data is not yet available
-                Gt_Trading_Downloaded.objects.create(trading_date=q_date, data_available=False)
-                job.error_message = 'Trading data are not yet available'
+                job.error_message = 'Trading data for date %s have problems when processing.' % qdate_str
                 raise Exception(job.error_message)
+        else:
+            job.error_message = 'Trading data for date %s have problems when downloading.' % qdate_str
+            raise Exception(job.error_message)
         transaction.commit()
         job.success()
     except: 
@@ -275,20 +211,24 @@ def gt_daily_trading_download_job(q_date=None):
         transaction.commit()
         transaction.set_autocommit(True)
 #             
-def _get_day_trading(qdate):
+def _get_day_trading(qdate_str):
+    logger.info("downloading gt trading data...")
     datarow_count = 0 
     # used to flag if data is available (if count >0)
     serviceUrl = TPEX_TRADING_DOWNLOAD_URL
     # need to call the TWSE using ROC year, so transform qdate to roc year
-    qdate_roc = western_to_roc_year(qdate)
-    parameters = {'d': qdate_roc, 'l':'zh-tw', 's':'0,asc,0', 't':'D'}
+    qdate_str_roc = western_to_roc_year(qdate_str)
+    parameters = {'d': qdate_str_roc, 
+                  'l':'zh-tw', 
+                  's':'0,asc,0', 
+                  't':'D'}
     try:        
         httpResponse = requests.get(serviceUrl, params=parameters, stream=True)
         httpResponse.encoding = "utf-8"
     except requests.HTTPError, e:
         result = e.read()
         raise Exception(result)
-    filename = "%s/trading_%s" % (GT_DOWNLOAD_1, re.sub('/', '', qdate))
+    filename = "%s/trading_%s" % (GT_DOWNLOAD_1, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'wb', encoding="utf8") as fd:
         for chunk in httpResponse.iter_content(chunk_size=1000, decode_unicode=True):
             fd.write(chunk)
@@ -306,47 +246,19 @@ def _get_day_trading(qdate):
         os.remove(filename2)
         return False
     else:
+        logger.info("There are %s trading records in file" % datarow_count)
         return True
-    
-def gt_daily_trading_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = gt_daily_trading_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # check if downloaded and available
-        try:
-            ob = Gt_Trading_Downloaded.objects.available_and_unprocessed(q_date)
-            if _process_day_trading(qdate):
-                ob.is_processed = True
-                ob.save()
-        except Gt_Trading_Downloaded.DoesNotExist:
-            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-            raise Exception(job.error_message)
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
-    
-def _process_day_trading(qdate):
-    filename = "%s/trading_%s_datarow" % (GT_DOWNLOAD_1, qdate)
+  
+def _process_day_trading(qdate_str):
+    logger.info("processing gt trading data...")
+    filename = "%s/trading_%s_datarow" % (GT_DOWNLOAD_1, re.sub('/', '', qdate_str))
     trading_items_to_save = []
     trading_warrant_items_to_save = []
     record_stored = 0
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr')
-        logger.info("There are %s trading records in file" % len(rows))
+        logger.info("Reading %s trading records in file" % len(rows))
         for row in rows:
             i = 0
             dt_item = None
@@ -363,10 +275,10 @@ def _process_day_trading(qdate):
                         dt_item = Gt_Trading()
                         trading_items_to_save.append(dt_item)
                         dt_item.stock_symbol = stock_item
-                    dt_item.trading_date = dateutil.convertToDate(qdate)
+                    dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')
                 elif i == 2:
                     dt_item.fi_buy = int(dt_data.replace(',', ''))                    
-                elif i == 3:
+                elif i == 3: 
                     dt_item.fi_sell = int(dt_data.replace(',', ''))  
                     dt_item.fi_diff = dt_item.fi_buy - dt_item.fi_sell                        
                 elif i == 5:
@@ -388,43 +300,44 @@ def _process_day_trading(qdate):
                     dt_item.total_diff = int(dt_data.replace(',', ''))
                 
                 i += 1
-            if i>0: record_stored += 1
+            if i > 0: record_stored += 1
     count1 = len(trading_warrant_items_to_save)
     count2 = len(trading_items_to_save) 
     if  count1 > 0: Gt_Trading_Warrant.objects.bulk_create(trading_warrant_items_to_save)
     if  count2 > 0: Gt_Trading.objects.bulk_create(trading_items_to_save)
-    logger.info("There are %s trading records stored ( %s warrant items, %s stock items)" % (record_stored, count1, count2))
+    logger.info("There are %s trading records processed ( %s warrant items, %s stock items)" % (record_stored, count1, count2))
     return True
 
-def gt_daily_summary_price_download_job(q_date=None):
+def gt_daily_summary_price_job(qdate=None):
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = gt_daily_summary_price_download_job.__name__  
+    job.title = gt_daily_summary_price_job.__name__  
     try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y/%m/%d")
-        # check if downloaded
-        try:
-            ob = Gt_Summary_Price_Downloaded.objects.by_trading_date(q_date)
-            # downloaded previously, and then check if data is available
-            if(not ob.data_available):
-                # data is not available, so retry download
-                if _get_market_summary_and_day_price(qdate):
-                    ob.data_available = True
-                    ob.save()
+        if not qdate: 
+            qdate = datetime.datetime.now().date()
+        qdate_str = qdate.strftime("%Y/%m/%d")
+        # check if processed
+        if Gt_Summary_Price_Processed.objects.check_processed(qdate):
+            job.error_message = 'Summary and price data for date %s have already been processed.' % qdate_str
+            raise Exception(job.error_message)
+        # for any specific date, the gt_daily_trading_job need to be run first
+        # so check if above mentioned job has been done
+        if not Gt_Trading_Processed.objects.check_processed(qdate):
+            job.error_message = "Trading data need to be processed before summary/price data"
+            raise Exception(job.error_message)
+        else:
+            if _get_summary_and_price(qdate_str):
+            # processing 
+                if (_process_price(qdate_str) and 
+                    _process_market_summary(qdate_str) and 
+                    _process_market_highlight(qdate_str)):
+                    Gt_Summary_Price_Processed.objects.create(trading_date=qdate)
                 else:
-                    job.error_message = 'Price/summary data are not yet available'
+                    job.error_message = 'Summary and price data for date %s have problems when processing.' % qdate_str
                     raise Exception(job.error_message)
-        except Gt_Summary_Price_Downloaded.DoesNotExist:
-            # not previously downloaded
-            if _get_market_summary_and_day_price(qdate):
-                Gt_Summary_Price_Downloaded.objects.create(trading_date=q_date)
             else:
-                # data is not yet available
-                Gt_Summary_Price_Downloaded.objects.create(trading_date=q_date, data_available=False)
-                job.error_message = 'Price/summary data are not yet available'
+                job.error_message = 'Summary and price data for date %s have problems when downloading.' % qdate_str
                 raise Exception(job.error_message)
         transaction.commit()
         job.success()
@@ -438,23 +351,25 @@ def gt_daily_summary_price_download_job(q_date=None):
         transaction.commit()
         transaction.set_autocommit(True)
 #
-def _get_market_summary_and_day_price(qdate):
+def _get_summary_and_price(qdate_str):
+    logger.info("downloading gt summary and price data...")
     # below are used to flag if data is available (if count >0)
     datarow_count_1c = 0 
     datarow_count_1d = 0 
-    datarow_count = 0 
-#get tpex market stats
+    datarow_count = 0
+    # get tpex market stats
     serviceUrl = TPEX_STATS_DOWNLOAD_URL
-    # need to call the TWSE using ROC year, so transform qdate to roc year
-    qdate_roc = western_to_roc_year(qdate)
-    parameters = {'d': qdate_roc, 'l':'zh-tw'}
+    # transform qdate to roc year
+    qdate_str_roc = western_to_roc_year(qdate_str)
+    parameters = {'d': qdate_str_roc, 
+                  'l':'zh-tw'}
     try:        
         httpResponse = requests.get(serviceUrl, params=parameters, stream=True)
         httpResponse.encoding = "utf-8"
     except requests.HTTPError, e:
         result = e.read()
         raise Exception(result)
-    filename1c = "%s/tpex_stats_%s" % (GT_DOWNLOAD_C, re.sub('/', '', qdate))
+    filename1c = "%s/tpex_stats_%s" % (GT_DOWNLOAD_C, re.sub('/', '', qdate_str))
     with codecs.open(filename1c, 'wb', encoding="utf8") as fd:
         soup = BeautifulSoup(httpResponse.text , 'lxml')
         tbody_element = soup.find('tbody')
@@ -462,12 +377,11 @@ def _get_market_summary_and_day_price(qdate):
         if tbody_element == None: 
             logger.warning("No tbody tag in market stats")
             return False
-#
         for tag in tbody_element.find_all('tr'):
             datarow_count_1c += 1
             print >> fd, unicode(tag)
         logger.info("%s market stats records downloaded" % datarow_count_1c)
-#get tpex market highlight
+    # get tpex market highlight
     serviceUrl = TPEX_HIGHLIGHT_DOWNLOAD_URL
     try:        
         httpResponse = requests.get(serviceUrl, params=parameters, stream=True)
@@ -475,7 +389,7 @@ def _get_market_summary_and_day_price(qdate):
     except requests.HTTPError, e:
         result = e.read()
         raise Exception(result)
-    filename1d = "%s/tpex_highlight_%s" % (GT_DOWNLOAD_D, re.sub('/', '', qdate))
+    filename1d = "%s/tpex_highlight_%s" % (GT_DOWNLOAD_D, re.sub('/', '', qdate_str))
     with codecs.open(filename1d, 'wb', encoding="utf8") as fd:
         soup = BeautifulSoup(httpResponse.text , 'lxml')
         tbody_element = soup.find('tbody')
@@ -483,22 +397,22 @@ def _get_market_summary_and_day_price(qdate):
         if tbody_element == None: 
             logger.warning("No tbody tag in market highlight")
             return False
-#
         for tag in tbody_element.find_all('tr'):
             datarow_count_1d += 1
             print >> fd, unicode(tag)
         logger.info("%s market highlight records downloaded" % datarow_count_1d)
-
-#get tpex daily quotes
+    # get tpex daily prices
     serviceUrl = TPEX_PRICE_DOWNLOAD_URL
-    parameters = {'d': qdate_roc, 'l':'zh-tw', 's':'0,asc,0'}
+    parameters = {'d': qdate_str_roc, 
+                  'l':'zh-tw', 
+                  's':'0,asc,0'}
     try:        
         httpResponse = requests.get(serviceUrl, params=parameters, stream=True)
         httpResponse.encoding = "utf-8"
     except requests.HTTPError, e:
         result = e.read()
         raise Exception(result)   
-    filename = "%s/price_%s" % (GT_DOWNLOAD_0, re.sub('/', '', qdate))
+    filename = "%s/price_%s" % (GT_DOWNLOAD_0, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'wb', encoding="utf8") as fd:
         for chunk in httpResponse.iter_content(chunk_size=1000, decode_unicode=True):
             fd.write(chunk)   
@@ -515,114 +429,28 @@ def _get_market_summary_and_day_price(qdate):
                 datarow_count += 1
                 print >> fd2, unicode(tag)
         logger.info("%s price records downloaded" % datarow_count)
+        #
     if(datarow_count_1c == 0 or datarow_count_1d == 0 or datarow_count <= 1):
+        logger.warning("Summary or price data are not available yet")
         os.remove(filename)
         os.remove(filename1c)
         os.remove(filename1d)
         os.remove(filename2)
         return False
     else:
+        logger.info("Finish downloading summary and price records")
         return True
-
-_allow_partially_run = True
-
-def gt_daily_summary_price_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = gt_daily_summary_price_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # for any specific date, the gt_daily_trading_process_job need to be run first
-        # so check if above mentioned job has been done
-        if not Gt_Trading_Downloaded.objects.check_processed(q_date):
-            job.error_message = "Trading data need to be processed before price data"
-            raise Exception(job.error_message)
-        else:
-            try:
-                # check if downloaded and available
-                ob = Gt_Summary_Price_Downloaded.objects.available_and_price_unprocessed(q_date)
-                if _process_daily_price(qdate):
-                    ob.price_processed = True
-                    ob.save()
-                ob = Gt_Summary_Price_Downloaded.objects.available_and_summary_unprocessed(q_date)
-                if _process_market_summary(qdate):
-                    ob.summary_processed = True
-                    ob.save()
-                ob = Gt_Summary_Price_Downloaded.objects.available_and_highlight_unprocessed(q_date)
-                if _process_market_highlight(qdate):
-                    ob.highlight_processed = True
-                    ob.save()
-            except Gt_Summary_Price_Downloaded.DoesNotExist:               
-                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-                raise Exception(job.error_message)
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
         
-def gt_daily_price_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = gt_daily_price_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # for any specific date, the gt_daily_trading_process_job need to be run first
-        # so check if above mentioned job has been done
-        if not Gt_Trading_Downloaded.objects.check_processed(q_date):
-            job.error_message = "Trading data need to be processed before price data"
-            raise Exception(job.error_message)
-        else:
-            try:
-                # check if downloaded and available
-                ob = Gt_Summary_Price_Downloaded.objects.available_and_price_unprocessed(q_date)
-                if _process_daily_price(qdate):
-                    ob.price_processed = True
-                    ob.save()
-            except Gt_Summary_Price_Downloaded.DoesNotExist:               
-                job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-                if not _allow_partially_run: raise Exception(job.error_message)
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
-        
-def check_up_or_down(data):
-    if data[0] == u'+': 
-        return float(data[1:])
-    elif data[0] == u'-': 
-        return -1 * float(data[1:])
-    else: 
-        return 0
-    
-def _process_daily_price(qdate):
-    filename = "%s/price_%s_datarow" % (GT_DOWNLOAD_0, qdate)
+def _process_price(qdate_str):
+    logger.info("processing gt price data...")
+    filename = "%s/price_%s_datarow" % (GT_DOWNLOAD_0, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr')
         logger.info("There are %s price records in file" % len(rows))
         record_stored = 0
-        stock_count=0
-        warrant_count=0
+        stock_count = 0
+        warrant_count = 0
         for row in rows:
             i = 0
             dt_item = None
@@ -634,23 +462,23 @@ def _process_daily_price(qdate):
                 elif i == 2:
                     # if there is no closing price --> no need to store this price record.
                     # therefore delay creation of model objects until we are sure there is closing price.
-                    temp_data=dt_data.replace(',', '')
+                    temp_data = dt_data.replace(',', '')
                     if is_float(temp_data): 
                         # create model objects
                         if check_if_warrant_item(symbol):
                             warrant_item, created = Gt_Warrant_Item.objects.get_or_create(symbol=symbol)
-                            dt_item, created = Gt_Trading_Warrant.objects.get_or_create(warrant_symbol=warrant_item, trading_date=dateutil.convertToDate(qdate))
-                            warrant_count+=1
+                            dt_item, created = Gt_Trading_Warrant.objects.get_or_create(warrant_symbol=warrant_item, trading_date=dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d'))
+                            warrant_count += 1
                         else:                  
                             stock_item, created = Gt_Stock_Item.objects.get_or_create(symbol=symbol)
-                            dt_item, created = Gt_Trading.objects.get_or_create(stock_symbol=stock_item, trading_date=dateutil.convertToDate(qdate))                  
-                            stock_count+=1
+                            dt_item, created = Gt_Trading.objects.get_or_create(stock_symbol=stock_item, trading_date=dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d'))                  
+                            stock_count += 1
                         
                         dt_item.closing_price = float(temp_data)
                     else:
                         break               
                 elif i == 3:  
-                    dt_item.price_change = check_up_or_down(dt_data.replace(',', ''))  
+                    dt_item.price_change = _check_up_or_down(dt_data.replace(',', ''))  
                 elif i == 4:
                     temp_data = dt_data.replace(',', '')
                     if is_float(temp_data): 
@@ -685,44 +513,15 @@ def _process_daily_price(qdate):
             if dt_item: 
                 dt_item.save()
                 record_stored += 1
-        logger.info("There are %s price records stored ( %s warrant items, %s stock items)" % (record_stored, warrant_count, stock_count))
+        logger.info("There are %s price records processed ( %s warrant items, %s stock items)" % (record_stored, warrant_count, stock_count))
     return True
-
-def gt_market_summary_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = gt_market_summary_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # check if downloaded and available
-        try:
-            ob = Gt_Summary_Price_Downloaded.objects.available_and_summary_unprocessed(q_date)
-            if _process_market_summary(qdate):
-                ob.summary_processed = True
-                ob.save()
-        except Gt_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-            if not _allow_partially_run: raise Exception(job.error_message)
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
         
-def _process_market_summary(qdate):
-    filename = "%s/tpex_stats_%s" % (GT_DOWNLOAD_C, qdate)
+def _process_market_summary(qdate_str):
+    logger.info("processing gt market summary data...")
+    filename = "%s/tpex_stats_%s" % (GT_DOWNLOAD_C, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
-        #tbody_element = soup.find('tbody')
+        # tbody_element = soup.find('tbody')
         rows = soup.find_all('tr')
         logger.info("There are %s summary records in file." % len(rows))
         record_stored = 0
@@ -735,8 +534,8 @@ def _process_market_summary(qdate):
                     # create model objects
                     type_item, created = Gt_Market_Summary_Type.objects.get_or_create(name=dt_data)
                     dt_item = Gt_Market_Summary()
-                    dt_item.summary_type=type_item
-                    dt_item.trading_date=dateutil.convertToDate(qdate)  
+                    dt_item.summary_type = type_item
+                    dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
                 elif i == 1: 
                     dt_item.trade_value = float(dt_data.replace(',', '')) 
                 elif i == 2:
@@ -747,49 +546,20 @@ def _process_market_summary(qdate):
             if dt_item: 
                 dt_item.save()
                 record_stored += 1
-        logger.info("There are %s summary records stored." % record_stored)
+        logger.info("There are %s summary records processed." % record_stored)
     return True
 
-def gt_market_highlight_process_job(q_date=None):
-    transaction.set_autocommit(False)
-    log_message(datetime.datetime.now())
-    job = Cron_Job_Log()
-    job.title = gt_market_highlight_process_job.__name__  
-    try:
-        if not q_date: 
-            q_date = datetime.datetime.now()
-        qdate = q_date.strftime("%Y%m%d")
-        # check if downloaded and available
-        try:
-            ob = Gt_Summary_Price_Downloaded.objects.available_and_highlight_unprocessed(q_date)
-            if _process_market_highlight(qdate):
-                ob.highlight_processed = True
-                ob.save()
-        except Gt_Summary_Price_Downloaded.DoesNotExist:
-            job.error_message = 'Data (%s) are not yet downloaded or have been processed' % qdate
-            if not _allow_partially_run: raise Exception(job.error_message)  
-        transaction.commit()
-        job.success()
-    except: 
-        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
-        transaction.rollback()
-        job.failed()
-        raise
-    finally:
-        job.save()
-        transaction.commit()
-        transaction.set_autocommit(True)
-        
-def _process_market_highlight(qdate):
-    filename = "%s/tpex_highlight_%s" % (GT_DOWNLOAD_D, qdate)
+def _process_market_highlight(qdate_str):
+    logger.info("processing gt market highlight data...")
+    filename = "%s/tpex_highlight_%s" % (GT_DOWNLOAD_D, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
-        #tbody_element = soup.find('tbody')
+        # tbody_element = soup.find('tbody')
         rows = soup.find_all('tr')
         logger.info("There are %s market highlight records in file." % len(rows))
         #
         dt_item = Gt_Market_Highlight()
-        dt_item.trading_date=dateutil.convertToDate(qdate)  
+        dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
         # process rows[0]
         cells = rows[0].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
@@ -797,26 +567,26 @@ def _process_market_highlight(qdate):
         # process rows[1]
         cells = rows[1].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
-        dt_item.capitals = int(dt_data)*1000000
+        dt_item.capitals = int(dt_data) * 1000000
         # process rows[2]
         cells = rows[2].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
-        dt_item.market_capitalization = int(dt_data)*1000000
+        dt_item.market_capitalization = int(dt_data) * 1000000
         # process rows[3]
         cells = rows[3].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
-        dt_item.trade_value = int(dt_data)*1000000
+        dt_item.trade_value = int(dt_data) * 1000000
         # process rows[4]
         cells = rows[4].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
-        dt_item.trade_volume = int(dt_data)*1000
+        dt_item.trade_volume = int(dt_data) * 1000
         # process rows[5]
         cells = rows[5].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
         dt_item.closing_index = float(dt_data)
         dt_data = cells[3].string.strip().replace(',', '')
         dt_item.change = float(dt_data)
-        dt_item.change_in_percentage = (dt_item.change/dt_item.closing_index)*100.0
+        dt_item.change_in_percentage = (dt_item.change / dt_item.closing_index) * 100.0
         # process rows[6]
         cells = rows[6].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
@@ -836,4 +606,14 @@ def _process_market_highlight(qdate):
         dt_data = cells[3].string.strip().replace(',', '')
         dt_item.stock_unmatch = dt_data
         dt_item.save()
+    logger.info("gt market highlight data processed...")
     return True
+
+def _check_up_or_down(data):
+    if data[0] == u'+': 
+        return float(data[1:])
+    elif data[0] == u'-': 
+        return -1 * float(data[1:])
+    else: 
+        return 0
+

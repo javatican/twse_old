@@ -195,3 +195,6 @@ GT_DOWNLOAD_1=os.path.join(BASE_DIR, 'gt','download1')
 GT_DOWNLOAD_2=os.path.join(BASE_DIR, 'gt','download2')
 GT_DOWNLOAD_3=os.path.join(BASE_DIR, 'gt','download3')
 GT_DOWNLOAD_4=os.path.join(BASE_DIR, 'gt','download4')
+#
+SLEEP_TIME_SHORT = 5
+SLEEP_TIME_LONG = 180

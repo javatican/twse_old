@@ -44,10 +44,8 @@ class Trading_Date(Model):
     objects= TradingDateManager()
            
 class StockItemMixin(object):
-    def need_to_process(self): 
-        return self.filter(data_ok=False, data_downloaded=True, parsing_error=False)
-    def data_not_yet_download(self):
-        return self.filter(data_downloaded=False)
+    def data_not_ok(self): 
+        return self.filter(data_ok=False)
     
 class StockItemQuerySet(QuerySet, StockItemMixin):
     pass
@@ -57,10 +55,13 @@ class StockItemManager(models.Manager, StockItemMixin):
         return StockItemQuerySet(self.model, using=self._db)
     def get_by_symbol(self, symbol):
         return self.get(symbol=symbol)
-    
+
+_TYPE_TWSE='1'
+_TYPE_GT='2'
+
 _TYPE_CHOICES = (
-        ('1', u'上市'),
-        ('2', u'上櫃'),)
+        (_TYPE_TWSE, u'上市'),
+        (_TYPE_GT, u'上櫃'),)
 
 def get_stock_item_type(type_name):
     if type_name ==  _TYPE_CHOICES[0][1]:
@@ -70,6 +71,14 @@ def get_stock_item_type(type_name):
     else:
         return None
     
+def select_warrant_type_code(symbol):
+    if symbol[0] == '0' and symbol[1] in ['3','4','5','6','7','8']:
+        return _TYPE_TWSE
+    elif symbol[0] == '7' and symbol[1] in ['0','1','2','3']:
+        return _TYPE_GT
+    else:
+        return False    
+    
 class Stock_Item(Model):
     symbol=models.CharField(default='', max_length=10, verbose_name=_('stock_symbol'))
     short_name=models.CharField(default='', max_length=20, verbose_name=_('stock_short_name'))
@@ -78,25 +87,19 @@ class Stock_Item(Model):
     market_category=models.CharField(default='', max_length=50, verbose_name=_('market_category'))
     notes=models.CharField(default='', max_length=100, verbose_name=_('notes'))
     data_ok = models.BooleanField(default=False, verbose_name=_('data_ok')) 
-    data_downloaded = models.BooleanField(default=False, verbose_name=_('data_downloaded')) 
-    parsing_error = models.BooleanField(default=False, verbose_name=_('parsing_error')) 
     is_etf = models.BooleanField(default=False, verbose_name=_('is_etf')) 
     etf_target = models.CharField(default='', max_length=100, verbose_name=_('etf_target'))
 
     objects= StockItemManager()
         
-    def is_stock_type_1(self): 
-        return self.type_code == _TYPE_CHOICES[0][0]
-    def is_stock_type_2(self): 
-        return self.type_code == _TYPE_CHOICES[1][0]
+    def is_twse_stock(self): 
+        return self.type_code == _TYPE_TWSE
+    def is_gt_stock(self): 
+        return self.type_code == _TYPE_GT
     
 class WarrantItemMixin(object):
-    def need_to_process(self): 
-        return self.filter(data_ok=False, data_downloaded=True, parsing_error=False)
-    def data_not_yet_download(self):
-        return self.filter(data_downloaded=False)
-    def data_need_other_download_url(self):
-        return self.filter(parsing_error=True)
+    def data_not_ok(self):
+        return self.filter(data_ok=False)
         
 class WarrantItemQuerySet(QuerySet, WarrantItemMixin):
     pass
@@ -107,16 +110,9 @@ class WarrantItemManager(models.Manager, WarrantItemMixin):
     def stocks_has_warrants(self):
         return self.filter(data_ok=True).distinct().values_list('target_stock__symbol', flat=True)
     
-_CALL = '1'
-_PUT = '2' 
 _EXERCISE_STYLE_CHOICES = (
         ('1', u'歐式'),
         ('2', u'美式'),)
-_CLASSIFICATION_CHOICES = (
-        (_CALL, u'認購'),
-        (_PUT, u'認售'),)
- 
-CLASSIFICATION_CODE = {'CALL':_CALL, 'PUT': _PUT}
 
 def get_warrant_exercise_style(exercise_style):
     if exercise_style ==  _EXERCISE_STYLE_CHOICES[0][1]:
@@ -126,6 +122,15 @@ def get_warrant_exercise_style(exercise_style):
     else:
         return None
     
+_CALL = '1'
+_PUT = '2' 
+
+_CLASSIFICATION_CHOICES = (
+        (_CALL, u'認購'),
+        (_PUT, u'認售'),)
+ 
+CLASSIFICATION_CODE = {'CALL':_CALL, 'PUT': _PUT}
+
 def get_warrant_classification(classification):
     if classification ==  _CLASSIFICATION_CHOICES[0][1]:
         return _CLASSIFICATION_CHOICES[0][0]
@@ -133,14 +138,6 @@ def get_warrant_classification(classification):
         return _CLASSIFICATION_CHOICES[1][0]
     else:
         return None
-    
-def select_warrant_type_code(symbol):
-    if symbol[0] == '0' and symbol[1] in ['3','4','5','6','7','8']:
-        return _TYPE_CHOICES[0][0]
-    elif symbol[0] == '7' and symbol[1] in ['0','1','2','3']:
-        return _TYPE_CHOICES[1][0]
-    else:
-        return False    
     
 class Warrant_Item(Model):
     symbol=models.CharField(default='', max_length=10, verbose_name=_('warrant_symbol'))
@@ -157,8 +154,6 @@ class Warrant_Item(Model):
     exercise_ratio = models.PositiveIntegerField(default=0, verbose_name=_('exercise_ratio')) 
     strike_price = models.DecimalField(max_digits=8, decimal_places=2, default=0, verbose_name=_('strike_price'))
     data_ok = models.BooleanField(default=False, verbose_name=_('data_ok')) 
-    data_downloaded = models.BooleanField(default=False, verbose_name=_('data_downloaded')) 
-    parsing_error = models.BooleanField(default=False, verbose_name=_('parsing_error')) 
     type_code = models.CharField(max_length=1, default='1', choices=_TYPE_CHOICES, verbose_name=_('stock_type'))
 
     objects = WarrantItemManager() 
@@ -167,16 +162,16 @@ class Warrant_Item(Model):
     def is_put(self):
         return self.classification == CLASSIFICATION_CODE['PUT']
 
-    def is_stock_type_1(self): 
-        return self.type_code == _TYPE_CHOICES[0][0]
-    def is_stock_type_2(self): 
-        return self.type_code == _TYPE_CHOICES[1][0]
+    def is_twse_stock(self): 
+        return self.type_code == _TYPE_TWSE
+    def is_gt_stock(self): 
+        return self.type_code == _TYPE_GT  
     
 class TwseTradingMixin(object):
     def by_date(self, trading_date):
         return self.filter(trading_date=trading_date)
-    def by_warrant_symbol(self, symbol):
-        return self.filter(warrant_symbol=symbol)
+    def by_symbol(self, symbol):
+        return self.filter(stock_symbol=symbol)
         
 class TwseTradingQuerySet(QuerySet, TwseTradingMixin):
     pass
@@ -270,72 +265,7 @@ class Twse_Trading_Warrant(Model):
     #
     class Meta:
         unique_together = ("warrant_symbol", "trading_date")
-class TwseTradingDownloadedMixin(object):
-    def not_processed(self):
-        return self.filter(is_processed=False, data_available=True)
-    
-class TwseTradingDownloadedQuerySet(QuerySet, TwseTradingDownloadedMixin):
-    pass
 
-class TwseTradingDownloadedManager(models.Manager, TwseTradingDownloadedMixin):
-    def get_queryset(self):
-        return TwseTradingDownloadedQuerySet(self.model, using=self._db)
-    def by_trading_date(self, trading_date):
-        return self.get(trading_date=trading_date) 
-    def available_and_unprocessed(self, trading_date):
-        return self.get(trading_date=trading_date, is_processed=False, data_available=True) 
-    def check_processed(self, trading_date):
-        return self.filter(trading_date=trading_date, is_processed=True).exists()
-
-class Twse_Trading_Downloaded(Model):
-    trading_date = models.DateField(null=False, unique=True, verbose_name=_('trading_date')) 
-    is_processed = models.BooleanField(default=False, verbose_name=_('is_processed')) 
-    data_available = models.BooleanField(default=True, verbose_name=_('data_available')) 
-    objects = TwseTradingDownloadedManager() 
-
-class TwseSummaryPriceDownloadedMixin(object):
-    def index_not_processed(self):
-        return self.filter(index_processed=False, data_available=True)
-    def tri_index_not_processed(self):
-        return self.filter(tri_index_processed=False, data_available=True)
-    def summary_not_processed(self):
-        return self.filter(summary_processed=False, data_available=True)
-    def updown_not_processed(self):
-        return self.filter(updown_processed=False, data_available=True)
-    def price_not_processed(self):
-        return self.filter(price_processed=False, data_available=True)
- 
-class TwseSummaryPriceDownloadedQuerySet(QuerySet, TwseSummaryPriceDownloadedMixin):
-    pass
-
-class TwseSummaryPriceDownloadedManager(models.Manager, TwseSummaryPriceDownloadedMixin):
-    def get_queryset(self):
-        return TwseSummaryPriceDownloadedQuerySet(self.model, using=self._db)
-    def by_trading_date(self, trading_date):
-        return self.get(trading_date=trading_date) 
-    def available_and_index_unprocessed(self, trading_date):
-        return self.get(trading_date=trading_date, index_processed=False, data_available=True) 
-    def available_and_tri_index_unprocessed(self, trading_date):
-        return self.get(trading_date=trading_date, tri_index_processed=False, data_available=True) 
-    def available_and_summary_unprocessed(self, trading_date):
-        return self.get(trading_date=trading_date, summary_processed=False, data_available=True) 
-    def available_and_updown_unprocessed(self, trading_date):
-        return self.get(trading_date=trading_date, updown_processed=False, data_available=True) 
-    def available_and_price_unprocessed(self, trading_date):
-        return self.get(trading_date=trading_date, price_processed=False, data_available=True) 
-
-class Twse_Summary_Price_Downloaded(Model):
-    trading_date = models.DateField(null=False, unique=True, verbose_name=_('trading_date')) 
-    index_processed = models.BooleanField(default=False, verbose_name=_('index_processed')) 
-    tri_index_processed = models.BooleanField(default=False, verbose_name=_('tri_index_processed')) 
-    summary_processed = models.BooleanField(default=False, verbose_name=_('summary_processed')) 
-    updown_processed = models.BooleanField(default=False, verbose_name=_('updown_processed')) 
-    price_processed = models.BooleanField(default=False, verbose_name=_('price_processed')) 
-    data_available = models.BooleanField(default=True, verbose_name=_('data_available')) 
-    objects = TwseSummaryPriceDownloadedManager() 
-    
-    
-    
 class IndexItemMixin(object):
     pass
     
@@ -349,7 +279,6 @@ class IndexItemManager(models.Manager, IndexItemMixin):
         return self.get(name=name)
     def get_by_tri_name(self, name):
         return self.get(name=name, is_total_return_index=True)
-    
     
 class Index_Item(Model):
     name=models.CharField(default='', max_length=100, verbose_name=_('index_name'))
@@ -450,3 +379,36 @@ class Stock_Up_Down_Stats(Model):
     stock_na = models.PositiveIntegerField(default=0, verbose_name=_('stock_na'))  
     trading_date = models.DateField(auto_now_add=False, unique=True, null=False, verbose_name=_('trading_date')) 
     objects= StockUpDownStatsManager()
+    
+    
+class TwseTradingProcessedMixin(object):
+    pass
+    
+class TwseTradingProcessedQuerySet(QuerySet, TwseTradingProcessedMixin):
+    pass
+
+class TwseTradingProcessedManager(models.Manager, TwseTradingProcessedMixin):
+    def get_queryset(self):
+        return TwseTradingProcessedQuerySet(self.model, using=self._db)
+    def check_processed(self, trading_date):
+        return self.filter(trading_date=trading_date).exists()
+
+class Twse_Trading_Processed(Model):
+    trading_date = models.DateField(null=False, unique=True, verbose_name=_('trading_date')) 
+    objects = TwseTradingProcessedManager() 
+
+class TwseSummaryPriceProcessedMixin(object):
+    pass
+ 
+class TwseSummaryPriceProcessedQuerySet(QuerySet, TwseSummaryPriceProcessedMixin):
+    pass
+
+class TwseSummaryPriceProcessedManager(models.Manager, TwseSummaryPriceProcessedMixin):
+    def get_queryset(self):
+        return TwseTradingProcessedQuerySet(self.model, using=self._db)
+    def check_processed(self, trading_date):
+        return self.filter(trading_date=trading_date).exists()
+
+class Twse_Summary_Price_Processed(Model):
+    trading_date = models.DateField(null=False, unique=True, verbose_name=_('trading_date')) 
+    objects = TwseSummaryPriceProcessedManager() 

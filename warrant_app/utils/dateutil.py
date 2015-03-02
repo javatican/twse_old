@@ -64,15 +64,6 @@ def getFirstDayPrevMonth(today=None):
     prev_month_1st = datetime.datetime.combine(datetime.date(year, mon, 1), time).replace(tzinfo=timezone.get_current_timezone())
     # return a timezone aware object
     return prev_month_1st
-
-def convertToDateTime(date_string):
-    #convert a string of format 'yyyymmdd' to date object
-    year = int(date_string[:4])
-    mon= int(date_string[4:6])
-    day = int(date_string[6:8])
-    #print year,mon,day
-    time = datetime.time(0, 0, 0)
-    return datetime.datetime.combine(datetime.date(year, mon, day), time).replace(tzinfo=timezone.get_current_timezone())
     
-def convertToDate(date_string):
-    return string_to_date(date_string, date_format='%Y%m%d')
+def convertToDate(date_string, date_format='%Y%m%d'):
+    return string_to_date(date_string, date_format)
