@@ -58,16 +58,15 @@ class StockItemManager(models.Manager, StockItemMixin):
 
 _TYPE_TWSE='1'
 _TYPE_GT='2'
-
 _TYPE_CHOICES = (
         (_TYPE_TWSE, u'上市'),
         (_TYPE_GT, u'上櫃'),)
 
 def get_stock_item_type(type_name):
-    if type_name ==  _TYPE_CHOICES[0][1]:
+    if type_name ==  u'上市':
         return _TYPE_CHOICES[0][0]
-    elif type_name == _TYPE_CHOICES[1][1]:
-        return _TYPE_CHOICES[1][0]
+    elif type_name == u'上櫃' or type_name == u'興櫃' or type_name == u'公開發行' :
+        return _TYPE_CHOICES[1][0] 
     else:
         return None
     
@@ -95,7 +94,7 @@ class Stock_Item(Model):
     def is_twse_stock(self): 
         return self.type_code == _TYPE_TWSE
     def is_gt_stock(self): 
-        return self.type_code == _TYPE_GT
+        return self.type_code == _TYPE_GT 
     
 class WarrantItemMixin(object):
     def data_not_ok(self):
@@ -172,6 +171,10 @@ class TwseTradingMixin(object):
         return self.filter(trading_date=trading_date)
     def by_symbol(self, symbol):
         return self.filter(stock_symbol=symbol)
+    def by_date_and_symbol(self, trading_date, symbol):
+        return self.filter(trading_date=trading_date, stock_symbol=symbol)
+    def by_date_and_symbol_id(self, trading_date, symbol_id):
+        return self.filter(trading_date=trading_date, stock_symbol_id=symbol_id)
         
 class TwseTradingQuerySet(QuerySet, TwseTradingMixin):
     pass
@@ -224,6 +227,10 @@ class TwseTradingWarrantMixin(object):
         return self.filter(trading_date=trading_date)
     def by_warrant_symbol(self, symbol):
         return self.filter(warrant_symbol=symbol)
+    def get_date_with_missing_target_trading_info(self, trading_date):
+        return self.filter(target_stock_trading__isnull=True).distinct().values_list('trading_date', flat=True)
+    def no_target_trading_info(self, trading_date):
+        return self.filter(trading_date=trading_date, target_stock_trading__isnull=True).select_related('warrant_symbol')
         
 class TwseTradingWarrantQuerySet(QuerySet, TwseTradingWarrantMixin):
     pass
@@ -234,6 +241,8 @@ class TwseTradingWarrantManager(models.Manager, TwseTradingWarrantMixin):
    
 class Twse_Trading_Warrant(Model):
     warrant_symbol = models.ForeignKey("core.Warrant_Item", null=True, related_name="twse_trading_warrant_list", verbose_name=_('warrant_symbol'))
+    target_stock_symbol = models.ForeignKey("core.Stock_Item", null=True, related_name="twse_trading_warrant_list2", verbose_name=_('target_stock_symbol'))
+    target_stock_trading = models.ForeignKey("core.Twse_Trading", null=True, related_name="twse_trading_warrant_list3", verbose_name=_('target_stock_trading'))
     total_diff = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('total_diff')) 
     fi_buy = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('fi_buy')) 
     fi_sell = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('fi_sell')) 
@@ -347,7 +356,7 @@ class Market_Summary(Model):
     trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
     
     objects= MarketSummaryManager()
- #
+
     class Meta:
         unique_together = ("summary_type", "trading_date")
           

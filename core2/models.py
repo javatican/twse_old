@@ -27,10 +27,10 @@ _TYPE_CHOICES = (
         (_TYPE_GT, u'上櫃'),)
 
 def get_stock_item_type(type_name):
-    if type_name ==  _TYPE_CHOICES[0][1]:
+    if type_name ==  u'上市':
         return _TYPE_CHOICES[0][0]
-    elif type_name == _TYPE_CHOICES[1][1]:
-        return _TYPE_CHOICES[1][0]
+    elif type_name == u'上櫃' or type_name == u'興櫃' or type_name == u'公開發行' :
+        return _TYPE_CHOICES[1][0] 
     else:
         return None
     

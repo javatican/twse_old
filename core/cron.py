@@ -140,8 +140,12 @@ def _process_stock_info(item, fd):
     i = 0
     for td_element in tr_element.find_all('td', recursive=False):
         anchor_element = td_element.find('a')
-        stock_data = anchor_element.string.strip()
-        # print stock_data
+        if anchor_element.string == None:
+            # means <a> tag contains more than 1 child tags
+            stock_data = ' '.join(anchor_element.stripped_strings)
+        else:
+            stock_data = anchor_element.string.strip()
+        print stock_data
         if i == 0:
             if stock_data != item.symbol: 
                 logger.warning("Stock symbol is not matched in file for %s" % item.symbol)
@@ -937,7 +941,7 @@ def _process_price(qdate_str):
                         warrant_count+=1
                     else:                  
                         stock_item, created = Stock_Item.objects.get_or_create(symbol=symbol)
-                        dt_item, created = Twse_Trading.objects.get_or_create(stock_symbol=stock_item, trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d'))                  
+                        dt_item, created = Twse_Trading.objects.get_or_create(stock_symbol=stock_item, trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d'))  
                         stock_count+=1
                     dt_item.trade_volume = trade_volume                 
                 elif i == 3:
@@ -1196,3 +1200,5 @@ def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
     except: 
         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
         raise
+
+
