@@ -1200,5 +1200,49 @@ def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
     except: 
         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
         raise
+    
+def _to_dict(a_list):
+    a_dict={}
+    for item in a_list:
+        key=item[0]
+        value=item[1]
+        a_dict[key]=value
+    return a_dict
 
-
+def trading_post_processing_job():
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = trading_post_processing_job.__name__  
+    try:
+        #first get all the dates of trading_warrant entries which have missing target trading
+        date_list = Twse_Trading_Warrant.objects.get_date_with_missing_target_trading_info()
+        #loop over the date list 
+        for a_date in date_list:
+            print a_date
+            if(a_date >= convertToDate('20150109')): continue
+            #get trading_warrant entries for the date
+            trading_warrant_list = Twse_Trading_Warrant.objects.no_target_trading_info(a_date)
+            # get all the trading entries for the date and put into a dictionary with stock_symbol_id as key, trading pk(id) as the value
+            trading_dict = _to_dict(Twse_Trading.objects.by_date(a_date).values_list('stock_symbol_id','id'))
+            #loop over trading warrant entries
+            for item in trading_warrant_list:
+                warrant_item=item.warrant_symbol
+                if warrant_item.target_stock !=None:
+                    item.target_stock_symbol_id = warrant_item.target_stock_id
+                    #some trading_warrant entries may not have corresponding stock trading entry (eg. IX0001)
+                    item.target_stock_trading_id=trading_dict.get(item.target_stock_symbol_id, None)
+                    item.save()  
+                else: 
+                    logger.warning("No target_stock info available for warrant item: %s" % warrant_item.symbol)       
+            transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)

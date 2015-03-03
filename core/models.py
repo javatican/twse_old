@@ -182,6 +182,7 @@ class TwseTradingQuerySet(QuerySet, TwseTradingMixin):
 class TwseTradingManager(models.Manager, TwseTradingMixin):
     def get_queryset(self):
         return TwseTradingQuerySet(self.model, using=self._db)
+
     def stocks_has_hedge_trade(self, type_code=True):
         if type_code:
             return self.filter(Q(stock_symbol__isnull=False), Q(hedge_buy__gt=0)|Q(hedge_sell__gt=0)).distinct().values('stock_symbol__symbol','stock_symbol__type_code')
@@ -227,7 +228,7 @@ class TwseTradingWarrantMixin(object):
         return self.filter(trading_date=trading_date)
     def by_warrant_symbol(self, symbol):
         return self.filter(warrant_symbol=symbol)
-    def get_date_with_missing_target_trading_info(self, trading_date):
+    def get_date_with_missing_target_trading_info(self):
         return self.filter(target_stock_trading__isnull=True).distinct().values_list('trading_date', flat=True)
     def no_target_trading_info(self, trading_date):
         return self.filter(trading_date=trading_date, target_stock_trading__isnull=True).select_related('warrant_symbol')

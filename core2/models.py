@@ -177,6 +177,10 @@ class GtTradingWarrantMixin(object):
         return self.filter(trading_date=trading_date)
     def by_warrant_symbol(self, symbol):
         return self.filter(warrant_symbol=symbol)
+    def get_date_with_missing_target_trading_info(self):
+        return self.filter(target_stock_trading__isnull=True).distinct().values_list('trading_date', flat=True)
+    def no_target_trading_info(self, trading_date):
+        return self.filter(trading_date=trading_date, target_stock_trading__isnull=True).select_related('warrant_symbol')
         
 class GtTradingWarrantQuerySet(QuerySet, GtTradingWarrantMixin):
     pass
@@ -187,6 +191,8 @@ class GtTradingWarrantManager(models.Manager, GtTradingWarrantMixin):
    
 class Gt_Trading_Warrant(Model):
     warrant_symbol = models.ForeignKey("core2.Gt_Warrant_Item", null=True, related_name="gt_trading_warrant_list", verbose_name=_('warrant_symbol'))
+    target_stock_symbol = models.ForeignKey("core2.Gt_Stock_Item", null=True, related_name="gt_trading_warrant_list2", verbose_name=_('target_stock_symbol'))
+    target_stock_trading = models.ForeignKey("core2.Gt_Trading", null=True, related_name="gt_trading_warrant_list3", verbose_name=_('target_stock_trading'))
     total_diff = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('total_diff')) 
     fi_buy = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('fi_buy')) 
     fi_sell = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('fi_sell')) 
