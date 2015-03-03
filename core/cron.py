@@ -32,7 +32,7 @@ from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year,
     convertToDate
 from warrant_app.utils.logutil import log_message
 from warrant_app.utils.stringutil import is_float
-from warrant_app.utils.warrant_util import check_if_warrant_item
+from warrant_app.utils.warrant_util import check_if_warrant_item, to_dict
 
 
 # from django.utils.translation import ugettext as _
@@ -1200,14 +1200,6 @@ def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
     except: 
         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
         raise
-    
-def _to_dict(a_list):
-    a_dict={}
-    for item in a_list:
-        key=item[0]
-        value=item[1]
-        a_dict[key]=value
-    return a_dict
 
 def trading_post_processing_job():
     transaction.set_autocommit(False)
@@ -1219,12 +1211,11 @@ def trading_post_processing_job():
         date_list = Twse_Trading_Warrant.objects.get_date_with_missing_target_trading_info()
         #loop over the date list 
         for a_date in date_list:
-            print a_date
-            if(a_date >= convertToDate('20150109')): continue
+            print a_date 
             #get trading_warrant entries for the date
             trading_warrant_list = Twse_Trading_Warrant.objects.no_target_trading_info(a_date)
             # get all the trading entries for the date and put into a dictionary with stock_symbol_id as key, trading pk(id) as the value
-            trading_dict = _to_dict(Twse_Trading.objects.by_date(a_date).values_list('stock_symbol_id','id'))
+            trading_dict = to_dict(Twse_Trading.objects.by_date(a_date).values_list('stock_symbol_id','id'))
             #loop over trading warrant entries
             for item in trading_warrant_list:
                 warrant_item=item.warrant_symbol

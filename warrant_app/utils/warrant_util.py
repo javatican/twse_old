@@ -8,3 +8,12 @@ def check_if_warrant_item(symbol):
         return True
     else:
         return False
+    
+    
+def to_dict(a_list):
+    a_dict={}
+    for item in a_list:
+        key=item[0]
+        value=item[1]
+        a_dict[key]=value
+    return a_dict
