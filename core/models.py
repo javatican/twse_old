@@ -41,7 +41,7 @@ class Trading_Date(Model):
     last_trading_day_of_month = models.BooleanField(default=False, verbose_name=_('last_trading_day_of_month')) 
     is_market_closed = models.BooleanField(default=False, verbose_name=_('is_market_closed')) 
     
-    objects= TradingDateManager()
+    objects = TradingDateManager()
            
 class StockItemMixin(object):
     def data_not_ok(self): 
@@ -56,14 +56,14 @@ class StockItemManager(models.Manager, StockItemMixin):
     def get_by_symbol(self, symbol):
         return self.get(symbol=symbol)
 
-_TYPE_TWSE='1'
-_TYPE_GT='2'
+_TYPE_TWSE = '1'
+_TYPE_GT = '2'
 _TYPE_CHOICES = (
         (_TYPE_TWSE, u'上市'),
         (_TYPE_GT, u'上櫃'),)
 
 def get_stock_item_type(type_name):
-    if type_name ==  u'上市':
+    if type_name == u'上市':
         return _TYPE_CHOICES[0][0]
     elif type_name == u'上櫃' or type_name == u'興櫃' or type_name == u'公開發行' :
         return _TYPE_CHOICES[1][0] 
@@ -71,25 +71,25 @@ def get_stock_item_type(type_name):
         return None
     
 def select_warrant_type_code(symbol):
-    if symbol[0] == '0' and symbol[1] in ['3','4','5','6','7','8']:
+    if symbol[0] == '0' and symbol[1] in ['3', '4', '5', '6', '7', '8']:
         return _TYPE_TWSE
-    elif symbol[0] == '7' and symbol[1] in ['0','1','2','3']:
+    elif symbol[0] == '7' and symbol[1] in ['0', '1', '2', '3']:
         return _TYPE_GT
     else:
         return False    
     
 class Stock_Item(Model):
-    symbol=models.CharField(default='', max_length=10, verbose_name=_('stock_symbol'))
-    short_name=models.CharField(default='', max_length=20, verbose_name=_('stock_short_name'))
-    name=models.CharField(default='', max_length=100, verbose_name=_('stock_name'))
+    symbol = models.CharField(default='', max_length=10, verbose_name=_('stock_symbol'))
+    short_name = models.CharField(default='', max_length=20, verbose_name=_('stock_short_name'))
+    name = models.CharField(default='', max_length=100, verbose_name=_('stock_name'))
     type_code = models.CharField(max_length=1, default='1', choices=_TYPE_CHOICES, verbose_name=_('stock_type'))
-    market_category=models.CharField(default='', max_length=50, verbose_name=_('market_category'))
-    notes=models.CharField(default='', max_length=100, verbose_name=_('notes'))
+    market_category = models.CharField(default='', max_length=50, verbose_name=_('market_category'))
+    notes = models.CharField(default='', max_length=100, verbose_name=_('notes'))
     data_ok = models.BooleanField(default=False, verbose_name=_('data_ok')) 
     is_etf = models.BooleanField(default=False, verbose_name=_('is_etf')) 
     etf_target = models.CharField(default='', max_length=100, verbose_name=_('etf_target'))
 
-    objects= StockItemManager()
+    objects = StockItemManager()
         
     def is_twse_stock(self): 
         return self.type_code == _TYPE_TWSE
@@ -114,7 +114,7 @@ _EXERCISE_STYLE_CHOICES = (
         ('2', u'美式'),)
 
 def get_warrant_exercise_style(exercise_style):
-    if exercise_style ==  _EXERCISE_STYLE_CHOICES[0][1]:
+    if exercise_style == _EXERCISE_STYLE_CHOICES[0][1]:
         return _EXERCISE_STYLE_CHOICES[0][0]
     elif exercise_style == _EXERCISE_STYLE_CHOICES[1][1]:
         return _EXERCISE_STYLE_CHOICES[1][0]
@@ -131,7 +131,7 @@ _CLASSIFICATION_CHOICES = (
 CLASSIFICATION_CODE = {'CALL':_CALL, 'PUT': _PUT}
 
 def get_warrant_classification(classification):
-    if classification ==  _CLASSIFICATION_CHOICES[0][1]:
+    if classification == _CLASSIFICATION_CHOICES[0][1]:
         return _CLASSIFICATION_CHOICES[0][0]
     elif classification == _CLASSIFICATION_CHOICES[1][1]:
         return _CLASSIFICATION_CHOICES[1][0]
@@ -139,13 +139,13 @@ def get_warrant_classification(classification):
         return None
     
 class Warrant_Item(Model):
-    symbol=models.CharField(default='', max_length=10, verbose_name=_('warrant_symbol'))
-    name=models.CharField(default='', max_length=20, verbose_name=_('warrant_name'))
-    target_stock=models.ForeignKey("core.Stock_Item", null=True, related_name="warrant_item_list", verbose_name=_('target_stock'))
-    target_symbol=models.CharField(default='', max_length=10, verbose_name=_('target_symbol'))
+    symbol = models.CharField(default='', max_length=10, verbose_name=_('warrant_symbol'))
+    name = models.CharField(default='', max_length=20, verbose_name=_('warrant_name'))
+    target_stock = models.ForeignKey("core.Stock_Item", null=True, related_name="warrant_item_list", verbose_name=_('target_stock'))
+    target_symbol = models.CharField(default='', max_length=10, verbose_name=_('target_symbol'))
     exercise_style = models.CharField(max_length=1, default=1, choices=_EXERCISE_STYLE_CHOICES, verbose_name=_('exercise_style'))
     classification = models.CharField(max_length=1, default=1, choices=_CLASSIFICATION_CHOICES, verbose_name=_('classification'))
-    issuer=models.CharField(default='', max_length=20, verbose_name=_('issuer'))
+    issuer = models.CharField(default='', max_length=20, verbose_name=_('issuer'))
     listed_date = models.DateField(auto_now_add=False, null=True, verbose_name=_('listed_date')) 
     last_trading_date = models.DateField(auto_now_add=False, null=True, verbose_name=_('last_trading_date')) 
     expiration_date = models.DateField(auto_now_add=False, null=True, verbose_name=_('expiration_date')) 
@@ -185,9 +185,9 @@ class TwseTradingManager(models.Manager, TwseTradingMixin):
 
     def stocks_has_hedge_trade(self, type_code=True):
         if type_code:
-            return self.filter(Q(stock_symbol__isnull=False), Q(hedge_buy__gt=0)|Q(hedge_sell__gt=0)).distinct().values('stock_symbol__symbol','stock_symbol__type_code')
+            return self.filter(Q(stock_symbol__isnull=False), Q(hedge_buy__gt=0) | Q(hedge_sell__gt=0)).distinct().values('stock_symbol__symbol', 'stock_symbol__type_code')
         else:
-            return self.filter(Q(stock_symbol__isnull=False), Q(hedge_buy__gt=0)|Q(hedge_sell__gt=0)).distinct().values('stock_symbol__symbol')
+            return self.filter(Q(stock_symbol__isnull=False), Q(hedge_buy__gt=0) | Q(hedge_sell__gt=0)).distinct().values('stock_symbol__symbol')
 
 class Twse_Trading(Model):
     stock_symbol = models.ForeignKey("core.Stock_Item", null=True, related_name="twse_trading_list", verbose_name=_('stock_symbol'))
@@ -232,6 +232,10 @@ class TwseTradingWarrantMixin(object):
         return self.filter(target_stock_trading__isnull=True).distinct().values_list('trading_date', flat=True)
     def no_target_trading_info(self, trading_date):
         return self.filter(trading_date=trading_date, target_stock_trading__isnull=True).select_related('warrant_symbol')
+    def get_date_with_missing_bs_info(self):
+        return self.filter(time_to_maturity__isnull=True).distinct().values_list('trading_date', flat=True)
+    def no_bs_info(self, trading_date):
+        return self.filter(trading_date=trading_date, time_to_maturity__isnull=True).select_related('warrant_symbol', 'target_stock_trading')
         
 class TwseTradingWarrantQuerySet(QuerySet, TwseTradingWarrantMixin):
     pass
@@ -271,6 +275,13 @@ class Twse_Trading_Warrant(Model):
     last_best_bid_volume = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('last_best_bid_volume'))
     last_best_ask_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('last_best_ask_price'))
     last_best_ask_volume = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('last_best_ask_volume'))
+#
+    time_to_maturity = models.DecimalField(max_digits=6, decimal_places=4, null=True, verbose_name=_('time_to_maturity')) 
+    implied_volatility = models.DecimalField(max_digits=6, decimal_places=4, null=True, verbose_name=_('implied_volatility')) 
+    delta = models.DecimalField(max_digits=7, decimal_places=4, null=True, verbose_name=_('delta')) 
+    leverage = models.DecimalField(max_digits=7, decimal_places=2, null=True, verbose_name=_('leverage')) 
+    calc_warrant_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, verbose_name=_('calc_warrant_price'))
+    
     objects = TwseTradingWarrantManager() 
     #
     class Meta:
@@ -291,11 +302,11 @@ class IndexItemManager(models.Manager, IndexItemMixin):
         return self.get(name=name, is_total_return_index=True)
     
 class Index_Item(Model):
-    name=models.CharField(default='', max_length=100, verbose_name=_('index_name'))
-    name_en=models.CharField(default='', max_length=100, verbose_name=_('index_name_en'))
+    name = models.CharField(default='', max_length=100, verbose_name=_('index_name'))
+    name_en = models.CharField(default='', max_length=100, verbose_name=_('index_name_en'))
     is_total_return_index = models.BooleanField(default=False, verbose_name=_('is_total_return_index'))  
 
-    objects= IndexItemManager()
+    objects = IndexItemManager()
 
 class IndexChangeInfoMixin(object):
     def by_date(self, trading_date):
@@ -315,7 +326,7 @@ class Index_Change_Info(Model):
     change_in_percentage = models.DecimalField(max_digits=8, decimal_places=2, default=0, verbose_name=_('change_in_percentage')) 
     trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
     
-    objects= IndexChangeInfoManager()
+    objects = IndexChangeInfoManager()
 #
     class Meta:
         unique_together = ("twse_index", "trading_date")
@@ -333,10 +344,10 @@ class MarketSummaryTypeManager(models.Manager, MarketSummaryTypeMixin):
         return self.get(name=name)
     
 class Market_Summary_Type(Model):
-    name=models.CharField(default='', max_length=100, verbose_name=_('market_summary_type_name'))
-    name_en=models.CharField(default='', max_length=100, verbose_name=_('market_summary_type_name_en'))
+    name = models.CharField(default='', max_length=100, verbose_name=_('market_summary_type_name'))
+    name_en = models.CharField(default='', max_length=100, verbose_name=_('market_summary_type_name_en'))
 
-    objects= MarketSummaryTypeManager()
+    objects = MarketSummaryTypeManager()
     
 class MarketSummaryMixin(object):
     def by_date(self, trading_date):
@@ -356,7 +367,7 @@ class Market_Summary(Model):
     trade_transaction = models.DecimalField(max_digits=17, decimal_places=0, default=0, verbose_name=_('trade_transaction')) 
     trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
     
-    objects= MarketSummaryManager()
+    objects = MarketSummaryManager()
 
     class Meta:
         unique_together = ("summary_type", "trading_date")
@@ -388,7 +399,7 @@ class Stock_Up_Down_Stats(Model):
     total_na = models.PositiveIntegerField(default=0, verbose_name=_('total_na')) 
     stock_na = models.PositiveIntegerField(default=0, verbose_name=_('stock_na'))  
     trading_date = models.DateField(auto_now_add=False, unique=True, null=False, verbose_name=_('trading_date')) 
-    objects= StockUpDownStatsManager()
+    objects = StockUpDownStatsManager()
     
     
 class TwseTradingProcessedMixin(object):

@@ -299,7 +299,7 @@ def _process_warrant_info(item, fd):
     return True
       
 def twse_manage_warrant_info_use_other_url_job():
-#different url , for 'finished' warrants 
+# different url , for 'finished' warrants 
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
     job.title = twse_manage_warrant_info_use_other_url_job.__name__ 
@@ -320,7 +320,7 @@ def twse_manage_warrant_info_use_other_url_job():
         job.save()
         
 def manage_warrant_info_2(items, is_gt=False): 
-    #different url , for 'finished' warrants 
+    # different url , for 'finished' warrants 
     gen = (item for item in items if item.data_ok == False)
     try: 
         for item in gen:
@@ -341,7 +341,7 @@ def manage_warrant_info_2(items, is_gt=False):
 #
                 for tag in table_element.find_all('tr'):
                     print >> fd, unicode(tag) 
-            #next do the process         
+            # next do the process         
             with codecs.open(filename, 'r', encoding="utf8") as fd:                            
                 if _process_warrant_info_2(item, fd):   
                     item.data_ok = True
@@ -360,13 +360,13 @@ def manage_warrant_info_2(items, is_gt=False):
         raise
           
 def _process_warrant_info_2(item, fd): 
-    #go along with manage_warrant_info_2, ie. different url , for 'finished' warrants 
+    # go along with manage_warrant_info_2, ie. different url , for 'finished' warrants 
     soup = BeautifulSoup(fd, 'lxml')
     rows = soup.find_all('tr')
-    if len(rows)==0: 
+    if len(rows) == 0: 
         logger.warning("No table row tag in file %s" % item.symbol)
         return False
-    #row 0
+    # row 0
     td_elements = rows[0].find_all('td', recursive=False)
     warrant_data = td_elements[0].string.strip()
     if item.symbol != warrant_data: 
@@ -379,37 +379,37 @@ def _process_warrant_info_2(item, fd):
         stock_item, created = Gt_Stock_Item.objects.get_or_create(symbol=warrant_data)
     item.target_stock = stock_item
     item.target_symbol = stock_item.symbol     
-    #row 1
+    # row 1
     td_elements = rows[1].find_all('td', recursive=False)
     warrant_data = td_elements[0].string.strip()
     item.name = warrant_data        
-    #row 3
+    # row 3
     td_elements = rows[3].find_all('td', recursive=False)
     warrant_data = td_elements[0].string.strip()
     item.classification = get_warrant_classification(warrant_data[:2])  
     warrant_data = td_elements[1].string.strip()
     item.issued_volume = int(warrant_data.replace(',', ''))   
-    #row 5
+    # row 5
     td_elements = rows[5].find_all('td', recursive=False)
     warrant_data = td_elements[0].string.strip() 
     item.listed_date = convertToDate(warrant_data)   
-    #row 6
+    # row 6
     td_elements = rows[6].find_all('td', recursive=False)
     warrant_data = td_elements[0].string.strip() 
     item.expiration_date = convertToDate(warrant_data)
-    #row 7
+    # row 7
     td_elements = rows[7].find_all('td', recursive=False)
     warrant_data = td_elements[0].string.strip() 
     item.last_trading_date = convertToDate(warrant_data)
-    #row 8
+    # row 8
     td_elements = rows[8].find_all('td', recursive=False)
     warrant_data = td_elements[1].string.strip() 
     item.exercise_ratio = int(float(warrant_data.replace(',', '')))
-    #row 9
+    # row 9
     td_elements = rows[9].find_all('td', recursive=False)
     warrant_data = td_elements[0].string.strip() 
     item.strike_price = float(warrant_data.replace(',', '')) 
-    #row 11
+    # row 11
     td_elements = rows[11].find_all('td', recursive=False)
     warrant_data = td_elements[0].string.strip() 
     item.exercise_style = get_warrant_exercise_style(warrant_data)  
@@ -442,7 +442,7 @@ def twse_bulk_download_warrant_info_job():
     finally:
         job.save()
                 
-def bulk_download_warrant_info(items,is_gt=False): 
+def bulk_download_warrant_info(items, is_gt=False): 
     originUrl = 'http://mops.twse.com.tw/mops/web/t90sbfa01'
     ajaxUrl = 'http://mops.twse.com.tw/mops/web/ajax_t90sbfa01' 
     try: 
@@ -667,7 +667,7 @@ def twse_daily_trading_job(qdate=None):
             job.error_message = 'Trading data for date %s have already been processed.' % qdate_str
             raise Exception(job.error_message)
         if _get_day_trading(qdate_str):
-            #call processing here
+            # call processing here
             if _process_day_trading(qdate_str):
                 Twse_Trading_Processed.objects.create(trading_date=qdate)
             else:
@@ -695,9 +695,9 @@ def _get_day_trading(qdate_str):
     serviceUrl = TWSE_TRADING_DOWNLOAD_URL
     # need to call the TWSE using ROC year, so transform qdate to roc year
     qdate_str_roc = western_to_roc_year(qdate_str)
-    parameters = {'input_date': qdate_str_roc, 
-                  'select2':'ALL', 
-                  'sorting':'by_stkno', 
+    parameters = {'input_date': qdate_str_roc,
+                  'select2':'ALL',
+                  'sorting':'by_stkno',
                   'login_btn':''}
     try:        
         httpResponse = requests.post(serviceUrl, data=parameters, stream=True)
@@ -722,7 +722,7 @@ def _get_day_trading(qdate_str):
         os.remove(filename2)
         return False
     else:
-        logger.info("There are %s trading records in file" % (datarow_count-1))
+        logger.info("There are %s trading records in file" % (datarow_count - 1))
         return True
     
 def _process_day_trading(qdate_str):
@@ -734,7 +734,7 @@ def _process_day_trading(qdate_str):
     with codecs.open(filename, 'r', encoding="utf8") as fd:
         soup = BeautifulSoup(fd, 'lxml')
         rows = soup.find_all('tr', class_='basic2')
-        logger.info("Reading %s trading records in file" % (len(rows)-1))
+        logger.info("Reading %s trading records in file" % (len(rows) - 1))
         for row in rows[1:]:
             i = 0
             dt_item = None
@@ -751,7 +751,7 @@ def _process_day_trading(qdate_str):
                         dt_item = Twse_Trading()
                         trading_items_to_save.append(dt_item)
                         dt_item.stock_symbol = stock_item
-                    dt_item.trading_date = dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d')
+                    dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')
                 elif i == 2:
                     dt_item.fi_buy = int(dt_data.replace(',', ''))                    
                 elif i == 3:
@@ -776,7 +776,7 @@ def _process_day_trading(qdate_str):
                     dt_item.total_diff = int(dt_data.replace(',', ''))
                 
                 i += 1
-            if i>0: record_stored += 1
+            if i > 0: record_stored += 1
     count1 = len(trading_warrant_items_to_save)
     count2 = len(trading_items_to_save) 
     if  count1 > 0: Twse_Trading_Warrant.objects.bulk_create(trading_warrant_items_to_save)
@@ -841,8 +841,8 @@ def _get_summary_and_price(qdate_str):
     serviceUrl = TWSE_PRICE_DOWNLOAD_URL
     # need to call the TWSE using ROC year, so transform qdate to roc year
     qdate_str_roc = western_to_roc_year(qdate_str)
-    parameters = {'qdate': qdate_str_roc, 
-                  'selectType':'ALL', 
+    parameters = {'qdate': qdate_str_roc,
+                  'selectType':'ALL',
                   'download':''}
     try:        
         httpResponse = requests.post(serviceUrl, data=parameters, stream=True)
@@ -895,7 +895,7 @@ def _get_summary_and_price(qdate_str):
             for tag in table_elements[1].find_all('tr'):
                 datarow_count2 += 1
                 print >> fd2, unicode(tag)
-        logger.info("%s price records downloaded" % (datarow_count2-2))
+        logger.info("%s price records downloaded" % (datarow_count2 - 2))
     if(datarow_count_1a == 0 or datarow_count_1b == 0 or datarow_count_1c == 0 or datarow_count_1d == 0 or datarow_count2 == 0):
         logger.warning("Summary or price data are not available yet")
         os.remove(filename)
@@ -917,9 +917,9 @@ def _process_price(qdate_str):
         rows = soup.find_all('tr')
         logger.info("There are %s price records in file" % (len(rows) - 2))
         record_stored = 0
-        stock_count=0
-        warrant_count=0
-        #skip two rows
+        stock_count = 0
+        warrant_count = 0
+        # skip two rows
         for row in rows[2:]:
             i = 0
             up_or_down = 0
@@ -937,12 +937,12 @@ def _process_price(qdate_str):
                     # create model objects
                     if check_if_warrant_item(symbol):
                         warrant_item, created = Warrant_Item.objects.get_or_create(symbol=symbol)
-                        dt_item, created = Twse_Trading_Warrant.objects.get_or_create(warrant_symbol=warrant_item, trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d'))
-                        warrant_count+=1
+                        dt_item, created = Twse_Trading_Warrant.objects.get_or_create(warrant_symbol=warrant_item, trading_date=dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d'))
+                        warrant_count += 1
                     else:                  
                         stock_item, created = Stock_Item.objects.get_or_create(symbol=symbol)
-                        dt_item, created = Twse_Trading.objects.get_or_create(stock_symbol=stock_item, trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d'))  
-                        stock_count+=1
+                        dt_item, created = Twse_Trading.objects.get_or_create(stock_symbol=stock_item, trading_date=dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d'))  
+                        stock_count += 1
                     dt_item.trade_volume = trade_volume                 
                 elif i == 3:
                     dt_item.trade_transaction = int(dt_data.replace(',', ''))              
@@ -1009,8 +1009,8 @@ def _process_index(qdate_str):
                     # create model objects
                     index_item, created = Index_Item.objects.get_or_create(name=dt_data)
                     dt_item = Index_Change_Info()
-                    dt_item.twse_index=index_item
-                    dt_item.trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d')             
+                    dt_item.twse_index = index_item
+                    dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')             
                 elif i == 1: 
                     dt_item.closing_index = float(dt_data.replace(',', ''))                
                 elif i == 2:
@@ -1048,8 +1048,8 @@ def _process_tri_index(qdate_str):
                     # create model objects
                     index_item, created = Index_Item.objects.get_or_create(name=dt_data, is_total_return_index=True)
                     dt_item = Index_Change_Info()
-                    dt_item.twse_index=index_item
-                    dt_item.trading_date=dateutil.convertToDate(qdate_str,date_format='%Y/%m/%d')  
+                    dt_item.twse_index = index_item
+                    dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
                 elif i == 1:
                     dt_item.closing_index = float(dt_data.replace(',', ''))                         
                 elif i == 2:
@@ -1086,8 +1086,8 @@ def _process_summary(qdate_str):
                     # create model objects
                     type_item, created = Market_Summary_Type.objects.get_or_create(name=dt_data)
                     dt_item = Market_Summary()
-                    dt_item.summary_type=type_item
-                    dt_item.trading_date=dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
+                    dt_item.summary_type = type_item
+                    dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
                 elif i == 1: 
                     dt_item.trade_value = float(dt_data.replace(',', '')) 
                 elif i == 2:
@@ -1110,7 +1110,7 @@ def _process_updown_stats(qdate_str):
         logger.info("There are %s up_down_stats records in file." % len(rows))
         #
         dt_item = Stock_Up_Down_Stats()
-        dt_item.trading_date=dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
+        dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
         # process rows[0]
         cells = rows[0].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
@@ -1159,41 +1159,41 @@ def _split_string(s_data):
 def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
     # get the warrant_item and trading_warrant and target_stock model instances
     try:
-        warrant_item= Warrant_Item.objects.select_related('target_stock').get(symbol=warrant_symbol)
+        warrant_item = Warrant_Item.objects.select_related('target_stock').get(symbol=warrant_symbol)
         trading_warrant_item = Twse_Trading_Warrant.objects.get(warrant_symbol=warrant_item, trading_date=qdate)
         trading_item = Twse_Trading.objects.get(stock_symbol=warrant_item.target_stock, trading_date=qdate)
         # or use closing_price
-        exercise_ratio = warrant_item.exercise_ratio*1.0/1000.0
+        exercise_ratio = warrant_item.exercise_ratio * 1.0 / 1000.0
         spot_price = float(trading_item.last_best_bid_price)
         if use_closing_price:        
             spot_price = float(trading_item.closing_price)
         strike_price = float(warrant_item.strike_price)
-        interest_rate= 0.0136
+        INTEREST_RATE = 0.0136
         expiration_date = warrant_item.expiration_date
         diff = expiration_date - qdate 
-        time_to_maturity = float(diff.days)/365.0
+        time_to_maturity = float(diff.days) / 365.0
         # or use closing_price
-        option_price = float(trading_warrant_item.last_best_bid_price)/exercise_ratio
+        option_price = float(trading_warrant_item.last_best_bid_price) / exercise_ratio
         if use_closing_price:        
-            option_price = float(trading_warrant_item.closing_price)/exercise_ratio
+            option_price = float(trading_warrant_item.closing_price) / exercise_ratio
             
         if warrant_item.is_call():
-            sigma = option_price_implied_volatility_call_black_scholes_newton(spot_price, strike_price, interest_rate, time_to_maturity,  
+            sigma = option_price_implied_volatility_call_black_scholes_newton(spot_price, strike_price, INTEREST_RATE, time_to_maturity,
                                                               option_price)
-            delta = option_price_delta_call_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity) 
-            warrant_price = option_price_call_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)
+            delta = option_price_delta_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity) 
+            warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
         else:
-            sigma = option_price_implied_volatility_put_black_scholes_newton(spot_price, strike_price, interest_rate, time_to_maturity,  
+            sigma = option_price_implied_volatility_put_black_scholes_newton(spot_price, strike_price, INTEREST_RATE, time_to_maturity,
                                                               option_price)
-            delta = option_price_delta_put_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity) 
-            warrant_price = option_price_put_black_scholes(spot_price, strike_price, interest_rate, sigma, time_to_maturity)
-        gearing=spot_price/option_price
-        leverage=gearing*delta
-        logger.info("Warrant item %s: spot_price = %s, strike_price= %s, option_price= %s" % (warrant_symbol,spot_price,strike_price, option_price*exercise_ratio))
-        logger.info("Warrant item %s: expiration_date = %s, time_to_maturity= %s" % (warrant_symbol,expiration_date,time_to_maturity))
-        logger.info("Warrant item %s: intrinsic volatility= %s, delta= %s" % (warrant_symbol,sigma,delta*exercise_ratio))
-        logger.info("Warrant item %s: warrant price= %s" % (warrant_symbol,warrant_price*exercise_ratio))
-        logger.info("Warrant item %s: gearing= %s, leverage= %s" % (warrant_symbol,gearing,leverage))
+            delta = option_price_delta_put_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity) 
+            warrant_price = option_price_put_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
+        gearing = spot_price / option_price
+        leverage = gearing * delta
+        logger.info("Warrant item %s: spot_price = %s, strike_price= %s, option_price= %s" % (warrant_symbol, spot_price, strike_price, option_price * exercise_ratio))
+        logger.info("Warrant item %s: expiration_date = %s, time_to_maturity= %s" % (warrant_symbol, expiration_date, time_to_maturity))
+        logger.info("Warrant item %s: intrinsic volatility= %s, delta= %s" % (warrant_symbol, sigma, delta * exercise_ratio))
+        logger.info("Warrant item %s: warrant price= %s" % (warrant_symbol, warrant_price * exercise_ratio))
+        logger.info("Warrant item %s: gearing= %s, leverage= %s" % (warrant_symbol, gearing, leverage))
     except ObjectDoesNotExist:
         logger.warning("Warrant symbol %s not found" % warrant_symbol)
         raise
@@ -1207,22 +1207,22 @@ def trading_post_processing_job():
     job = Cron_Job_Log()
     job.title = trading_post_processing_job.__name__  
     try:
-        #first get all the dates of trading_warrant entries which have missing target trading
+        # first get all the dates of trading_warrant entries which have missing target trading
         date_list = Twse_Trading_Warrant.objects.get_date_with_missing_target_trading_info()
-        #loop over the date list 
+        # loop over the date list 
         for a_date in date_list:
             print a_date 
-            #get trading_warrant entries for the date
+            # get trading_warrant entries for the date
             trading_warrant_list = Twse_Trading_Warrant.objects.no_target_trading_info(a_date)
             # get all the trading entries for the date and put into a dictionary with stock_symbol_id as key, trading pk(id) as the value
-            trading_dict = to_dict(Twse_Trading.objects.by_date(a_date).values_list('stock_symbol_id','id'))
-            #loop over trading warrant entries
+            trading_dict = to_dict(Twse_Trading.objects.by_date(a_date).values_list('stock_symbol_id', 'id'))
+            # loop over trading warrant entries
             for item in trading_warrant_list:
-                warrant_item=item.warrant_symbol
-                if warrant_item.target_stock !=None:
+                warrant_item = item.warrant_symbol
+                if warrant_item.target_stock != None:
                     item.target_stock_symbol_id = warrant_item.target_stock_id
-                    #some trading_warrant entries may not have corresponding stock trading entry (eg. IX0001)
-                    item.target_stock_trading_id=trading_dict.get(item.target_stock_symbol_id, None)
+                    # some trading_warrant entries may not have corresponding stock trading entry (eg. IX0001)
+                    item.target_stock_trading_id = trading_dict.get(item.target_stock_symbol_id, None)
                     item.save()  
                 else: 
                     logger.warning("No target_stock info available for warrant item: %s" % warrant_item.symbol)       
@@ -1237,3 +1237,87 @@ def trading_post_processing_job():
         job.save()
         transaction.commit()
         transaction.set_autocommit(True)
+
+def black_scholes_calc_job():
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = black_scholes_calc_job.__name__  
+    try:
+        # first get all the dates of trading_warrant entries which have missing bs data
+        date_list = Twse_Trading_Warrant.objects.get_date_with_missing_bs_info()
+        # loop over the date list 
+        for a_date in date_list:
+            print a_date 
+            # get trading_warrant entries for the date
+            trading_warrant_list = Twse_Trading_Warrant.objects.no_bs_info(a_date)
+            # loop over trading warrant entries
+            for trading_warrant_entry in trading_warrant_list:
+                warrant_item = trading_warrant_entry.warrant_symbol
+                stock_trading_entry = trading_warrant_entry.target_stock_trading
+                if stock_trading_entry != None: 
+                    # some trading_warrant entries may not have corresponding stock trading entry (eg. IX0001)
+                    try:
+                        time_to_maturity, implied_volatility, delta, leverage, calc_warrant_price = _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry)
+                    except:
+                        #any exception may raise, but keep the loop going
+                        logger.warning("Error when calculating BS values for trading_warrant_entry: ( id=%s )" % trading_warrant_entry.id)
+                        continue
+                    trading_warrant_entry.time_to_maturity = time_to_maturity
+                    trading_warrant_entry.implied_volatility = implied_volatility
+                    trading_warrant_entry.delta = delta
+                    trading_warrant_entry.leverage = leverage
+                    trading_warrant_entry.calc_warrant_price = calc_warrant_price
+                    trading_warrant_entry.save()  
+            transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+
+def _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry):
+    logger.info("***Processing trading warrant : %s" % trading_warrant_entry.id)
+    exercise_ratio = warrant_item.exercise_ratio * 1.0 / 1000.0
+    spot_price = float(stock_trading_entry.last_best_bid_price)
+    # default use last_best_bid_price for bs calculation, if not available then use closing_price
+    if spot_price <= 0.0:        
+        spot_price = float(stock_trading_entry.closing_price)
+    if spot_price <= 0.0:
+        raise Exception("Spot price is %s" % spot_price)
+#
+    strike_price = float(warrant_item.strike_price)
+    INTEREST_RATE = 0.0136
+    diff = warrant_item.expiration_date - trading_warrant_entry.trading_date 
+    time_to_maturity = float(diff.days) / 365.0
+    option_price = float(trading_warrant_entry.last_best_bid_price) / exercise_ratio
+    # default use last_best_bid_price for bs calculation, if not available then use closing_price
+    if option_price <= 0.0:        
+        option_price = float(trading_warrant_entry.closing_price) / exercise_ratio
+    if option_price <= 0.0:
+        raise Exception("Warrant price is %s" % option_price)
+#
+    logger.info("exercise_ratio=%s, spot_price=%s,  strike_price=%s, diff=%s, time_to_maturity=%s, warrant_price=%s" % (exercise_ratio, spot_price, strike_price, diff, time_to_maturity, option_price))
+    if warrant_item.is_call():
+        sigma = option_price_implied_volatility_call_black_scholes_newton(
+                              spot_price, strike_price, INTEREST_RATE, time_to_maturity, option_price)
+        delta = option_price_delta_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity) 
+        calc_warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
+    else:
+        sigma = option_price_implied_volatility_put_black_scholes_newton(
+                              spot_price, strike_price, INTEREST_RATE, time_to_maturity,option_price)
+        delta = option_price_delta_put_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity) 
+        calc_warrant_price = option_price_put_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
+    leverage = (spot_price / option_price) * delta
+    
+    logger.info("sigma=%s, delta=%s, leverage=%s, calc_warrant_price=%s" % (sigma,delta,leverage,calc_warrant_price*exercise_ratio))
+#  
+    return (time_to_maturity, sigma, delta, leverage, calc_warrant_price * exercise_ratio)
+    
+    
+    
