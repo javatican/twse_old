@@ -10,5 +10,5 @@ urlpatterns = patterns('',
     url(r'^twse_daily_trading/$', 'core.views.twse_daily_trading2', name='twse_daily_trading2'),
     url(r'^twse_daily_summary_price/(?P<qdate_str>\d+)/$', 'core.views.twse_daily_summary_price', name='twse_daily_summary_price'),
     url(r'^twse_daily_summary_price/$', 'core.views.twse_daily_summary_price2', name='twse_daily_summary_price2'),
-    url(r'^test_black_scholes/(?P<warrant_symbol>\w+)/date/(?P<qdate_str>\d+)/$', 'core.views.test_black_scholes', name='test_black_scholes'),
+    url(r'^py/(?P<warrant_symbol>\w+)/date/(?P<qdate_str>\d+)/$', 'core.views.py', name='py'),
     )

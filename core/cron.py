@@ -1262,6 +1262,8 @@ def black_scholes_calc_job():
                     except:
                         #any exception may raise, but keep the loop going
                         logger.warning("Error when calculating BS values for trading_warrant_entry: ( id=%s )" % trading_warrant_entry.id)
+                        trading_warrant_entry.not_converged=True
+                        trading_warrant_entry.save()  
                         continue
                     trading_warrant_entry.time_to_maturity = time_to_maturity
                     trading_warrant_entry.implied_volatility = implied_volatility

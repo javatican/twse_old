@@ -18,3 +18,5 @@ encoding//core2/cron.py=utf8
 encoding//core2/migrations/0003_auto_20150302_1537.py=utf-8
 encoding//core2/migrations/0004_auto_20150303_1819.py=utf-8
 encoding//core2/models.py=utf8
+encoding/hedge_buy_sell_stats.py=utf-8
+encoding/test.py=utf-8

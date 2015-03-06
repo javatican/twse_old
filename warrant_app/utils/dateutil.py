@@ -1,6 +1,14 @@
-from django.utils import timezone
 import calendar
 import datetime
+from django.utils import timezone
+import json
+
+class DateEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if hasattr(obj, 'isoformat'):
+            return obj.isoformat()
+        return json.JSONEncoder.default(self, obj)
+#usage: json.dumps(data, cls=DateEncoder)
 
 def string_to_date(date_string, date_format='%Y/%m/%d'):
     return datetime.datetime.strptime(date_string,date_format).date()

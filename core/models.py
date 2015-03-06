@@ -228,14 +228,10 @@ class TwseTradingWarrantMixin(object):
         return self.filter(trading_date=trading_date)
     def by_warrant_symbol(self, symbol):
         return self.filter(warrant_symbol=symbol)
-    def get_date_with_missing_target_trading_info(self):
-        return self.filter(target_stock_trading__isnull=True).distinct().values_list('trading_date', flat=True)
     def no_target_trading_info(self, trading_date):
         return self.filter(trading_date=trading_date, target_stock_trading__isnull=True).select_related('warrant_symbol')
-    def get_date_with_missing_bs_info(self):
-        return self.filter(time_to_maturity__isnull=True).distinct().values_list('trading_date', flat=True)
     def no_bs_info(self, trading_date):
-        return self.filter(trading_date=trading_date, time_to_maturity__isnull=True).select_related('warrant_symbol', 'target_stock_trading')
+        return self.filter(trading_date=trading_date, time_to_maturity__isnull=True, not_converged__isnull=True).select_related('warrant_symbol', 'target_stock_trading')
         
 class TwseTradingWarrantQuerySet(QuerySet, TwseTradingWarrantMixin):
     pass
@@ -243,7 +239,11 @@ class TwseTradingWarrantQuerySet(QuerySet, TwseTradingWarrantMixin):
 class TwseTradingWarrantManager(models.Manager, TwseTradingWarrantMixin):
     def get_queryset(self):
         return TwseTradingWarrantQuerySet(self.model, using=self._db)
-   
+    def get_date_with_missing_bs_info(self):
+        return self.filter(time_to_maturity__isnull=True, not_converged__isnull=True).distinct().values_list('trading_date', flat=True)
+    def get_date_with_missing_target_trading_info(self):
+        return self.filter(target_stock_trading__isnull=True).distinct().values_list('trading_date', flat=True)
+  
 class Twse_Trading_Warrant(Model):
     warrant_symbol = models.ForeignKey("core.Warrant_Item", null=True, related_name="twse_trading_warrant_list", verbose_name=_('warrant_symbol'))
     target_stock_symbol = models.ForeignKey("core.Stock_Item", null=True, related_name="twse_trading_warrant_list2", verbose_name=_('target_stock_symbol'))
@@ -275,12 +275,13 @@ class Twse_Trading_Warrant(Model):
     last_best_bid_volume = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('last_best_bid_volume'))
     last_best_ask_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('last_best_ask_price'))
     last_best_ask_volume = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('last_best_ask_volume'))
-#
+#Black Scholes data
     time_to_maturity = models.DecimalField(max_digits=6, decimal_places=4, null=True, verbose_name=_('time_to_maturity')) 
     implied_volatility = models.DecimalField(max_digits=6, decimal_places=4, null=True, verbose_name=_('implied_volatility')) 
     delta = models.DecimalField(max_digits=7, decimal_places=4, null=True, verbose_name=_('delta')) 
     leverage = models.DecimalField(max_digits=7, decimal_places=2, null=True, verbose_name=_('leverage')) 
     calc_warrant_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, verbose_name=_('calc_warrant_price'))
+    not_converged = models.NullBooleanField(null=True, verbose_name=_('not_converged'))  
     
     objects = TwseTradingWarrantManager() 
     #
@@ -413,7 +414,9 @@ class TwseTradingProcessedManager(models.Manager, TwseTradingProcessedMixin):
         return TwseTradingProcessedQuerySet(self.model, using=self._db)
     def check_processed(self, trading_date):
         return self.filter(trading_date=trading_date).exists()
-
+    def get_dates(self):
+        return self.all().order_by('trading_date').values_list('trading_date', flat=True)
+    
 class Twse_Trading_Processed(Model):
     trading_date = models.DateField(null=False, unique=True, verbose_name=_('trading_date')) 
     objects = TwseTradingProcessedManager() 
