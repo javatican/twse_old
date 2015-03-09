@@ -66,7 +66,10 @@ others=[]
 i=0
 previous_date=None
 for trading_date_str in trading_date_list:
-    trading_date=string_to_date(trading_date_str, date_format='%Y-%m-%d')
+    if isinstance(trading_date_str,str):
+        trading_date = string_to_date(trading_date_str, date_format='%Y-%m-%d')
+    else:
+        trading_date = trading_date_str
     day_of_week= trading_date.weekday()+1
     if day_of_week==1:
         mon.append(i)
