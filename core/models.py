@@ -282,6 +282,9 @@ class Twse_Trading_Warrant(Model):
     leverage = models.DecimalField(max_digits=7, decimal_places=2, null=True, verbose_name=_('leverage')) 
     calc_warrant_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, verbose_name=_('calc_warrant_price'))
     not_converged = models.NullBooleanField(null=True, verbose_name=_('not_converged'))  
+#others
+    moneyness = models.DecimalField(max_digits=9, decimal_places=3, null=True, verbose_name=_('moneyness')) 
+    
     
     objects = TwseTradingWarrantManager() 
     #

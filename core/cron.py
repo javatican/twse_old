@@ -1201,11 +1201,11 @@ def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
         raise
 
-def trading_post_processing_job():
+def twse_trading_post_processing_job():
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = trading_post_processing_job.__name__  
+    job.title = twse_trading_post_processing_job.__name__  
     try:
         # first get all the dates of trading_warrant entries which have missing target trading
         date_list = Twse_Trading_Warrant.objects.get_date_with_missing_target_trading_info()
@@ -1238,11 +1238,11 @@ def trading_post_processing_job():
         transaction.commit()
         transaction.set_autocommit(True)
 
-def black_scholes_calc_job():
+def twse_black_scholes_calc_job():
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = black_scholes_calc_job.__name__  
+    job.title = twse_black_scholes_calc_job.__name__  
     try:
         # first get all the dates of trading_warrant entries which have missing bs data
         date_list = Twse_Trading_Warrant.objects.get_date_with_missing_bs_info()
@@ -1258,6 +1258,13 @@ def black_scholes_calc_job():
                 if stock_trading_entry != None: 
                     # some trading_warrant entries may not have corresponding stock trading entry (eg. IX0001)
                     try:
+                        # calc moneyness (not related to BS algorithm)
+                        spot_price=float(stock_trading_entry.closing_price)
+                        strike_price=float(warrant_item.strike_price)
+                        moneyness=(spot_price-strike_price)/strike_price
+                        if warrant_item.is_put():
+                            moneyness=-1.0*moneyness
+                        trading_warrant_entry.moneyness=moneyness
                         time_to_maturity, implied_volatility, delta, leverage, calc_warrant_price = _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry)
                     except:
                         #any exception may raise, but keep the loop going
@@ -1322,4 +1329,38 @@ def _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry):
     return (time_to_maturity, sigma, delta, leverage, calc_warrant_price * exercise_ratio)
     
     
-    
+def update_moneyness_job(): 
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = update_moneyness_job.__name__  
+    try:
+        trading_date_list = Twse_Trading_Warrant.objects.filter(moneyness__isnull=True).distinct().values_list('trading_date', flat=True)
+        for trading_date in trading_date_list:
+            print trading_date
+            trading_warrant_list = Twse_Trading_Warrant.objects.filter(trading_date=trading_date).select_related('warrant_symbol', 'target_stock_trading')
+            # loop over trading warrant entries
+            for trading_warrant_entry in trading_warrant_list:
+                warrant_item = trading_warrant_entry.warrant_symbol
+                stock_trading_entry = trading_warrant_entry.target_stock_trading
+                if stock_trading_entry != None: 
+                    # some trading_warrant entries may not have corresponding stock trading entry (eg. IX0001)
+                    # calc moneyness (not related to BS algorithm)
+                    spot_price=float(stock_trading_entry.closing_price)
+                    strike_price=float(warrant_item.strike_price)
+                    moneyness=(spot_price-strike_price)/strike_price
+                    if warrant_item.is_put():
+                        moneyness=-1.0*moneyness
+                    trading_warrant_entry.moneyness=moneyness
+                    trading_warrant_entry.save()  
+            transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)

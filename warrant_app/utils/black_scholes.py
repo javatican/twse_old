@@ -184,7 +184,7 @@ def N(z):
     Converted to Python from "Financial Numerical Recipes in C" by: 
     Bernt Arne Odegaard 
     http://finance.bi.no/~bernt/gcc_prog/index.html 
-    @param z: Value to test 
+    @param z: Value to twse_process 
     @return: Cumulative normal distribution 
     """  
     if (z >  6.0):  # this guards against overflow   

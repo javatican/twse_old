@@ -21,6 +21,10 @@ from warrant_app.settings import GT_DOWNLOAD_3, TPEX_TRADING_DOWNLOAD_URL, GT_DO
     TPEX_STATS_DOWNLOAD_URL, GT_DOWNLOAD_C, TPEX_HIGHLIGHT_DOWNLOAD_URL, \
     GT_DOWNLOAD_D, TPEX_PRICE_DOWNLOAD_URL, GT_DOWNLOAD_0
 from warrant_app.utils import dateutil
+from warrant_app.utils.black_scholes import option_price_implied_volatility_call_black_scholes_newton, \
+    option_price_delta_call_black_scholes, option_price_call_black_scholes, \
+    option_price_implied_volatility_put_black_scholes_newton, \
+    option_price_delta_put_black_scholes, option_price_put_black_scholes
 from warrant_app.utils.dateutil import western_to_roc_year, roc_year_to_western, \
     is_third_wednesday, convertToDate
 from warrant_app.utils.logutil import log_message
@@ -609,11 +613,19 @@ def _process_market_highlight(qdate_str):
     logger.info("gt market highlight data processed...")
     return True
 
-def trading_post_processing_job():
+def _check_up_or_down(data):
+    if data[0] == u'+': 
+        return float(data[1:])
+    elif data[0] == u'-': 
+        return -1 * float(data[1:])
+    else: 
+        return 0
+    
+def gt_trading_post_processing_job():
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
-    job.title = trading_post_processing_job.__name__  
+    job.title = gt_trading_post_processing_job.__name__  
     try:
         #first get all the dates of trading_warrant entries which have missing target trading
         date_list = Gt_Trading_Warrant.objects.get_date_with_missing_target_trading_info()
@@ -646,11 +658,95 @@ def trading_post_processing_job():
         transaction.commit()
         transaction.set_autocommit(True)
 
-def _check_up_or_down(data):
-    if data[0] == u'+': 
-        return float(data[1:])
-    elif data[0] == u'-': 
-        return -1 * float(data[1:])
-    else: 
-        return 0
+def gt_black_scholes_calc_job():
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = gt_black_scholes_calc_job.__name__  
+    try:
+        # first get all the dates of trading_warrant entries which have missing bs data
+        date_list = Gt_Trading_Warrant.objects.get_date_with_missing_bs_info()
+        # loop over the date list 
+        for a_date in date_list:
+            print a_date 
+            # get trading_warrant entries for the date
+            trading_warrant_list = Gt_Trading_Warrant.objects.no_bs_info(a_date)
+            # loop over trading warrant entries
+            for trading_warrant_entry in trading_warrant_list:
+                warrant_item = trading_warrant_entry.warrant_symbol
+                stock_trading_entry = trading_warrant_entry.target_stock_trading
+                if stock_trading_entry != None: 
+                    # some trading_warrant entries may not have corresponding stock trading entry (eg. IX0001)
+                    try:
+                        # calc moneyness (not related to BS algorithm)
+                        spot_price=float(stock_trading_entry.closing_price)
+                        strike_price=float(warrant_item.strike_price)
+                        moneyness=(spot_price-strike_price)/strike_price
+                        if warrant_item.is_put():
+                            moneyness=-1.0*moneyness
+                        trading_warrant_entry.moneyness=moneyness
+                        time_to_maturity, implied_volatility, delta, leverage, calc_warrant_price = _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry)
+                    except:
+                        #any exception may raise, but keep the loop going
+                        logger.warning("Error when calculating BS values for trading_warrant_entry: ( id=%s )" % trading_warrant_entry.id)
+                        trading_warrant_entry.not_converged=True
+                        trading_warrant_entry.save()  
+                        continue
+                    trading_warrant_entry.time_to_maturity = time_to_maturity
+                    trading_warrant_entry.implied_volatility = implied_volatility
+                    trading_warrant_entry.delta = delta
+                    trading_warrant_entry.leverage = leverage
+                    trading_warrant_entry.calc_warrant_price = calc_warrant_price
+                    trading_warrant_entry.save()  
+            transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+
+def _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry):
+    logger.info("***Processing trading warrant : %s" % trading_warrant_entry.id)
+    exercise_ratio = warrant_item.exercise_ratio * 1.0 / 1000.0
+    spot_price = float(stock_trading_entry.last_best_bid_price)
+    # default use last_best_bid_price for bs calculation, if not available then use closing_price
+    if spot_price <= 0.0:        
+        spot_price = float(stock_trading_entry.closing_price)
+    if spot_price <= 0.0:
+        raise Exception("Spot price is %s" % spot_price)
+#
+    strike_price = float(warrant_item.strike_price)
+    INTEREST_RATE = 0.0136
+    diff = warrant_item.expiration_date - trading_warrant_entry.trading_date 
+    time_to_maturity = float(diff.days) / 365.0
+    option_price = float(trading_warrant_entry.last_best_bid_price) / exercise_ratio
+    # default use last_best_bid_price for bs calculation, if not available then use closing_price
+    if option_price <= 0.0:        
+        option_price = float(trading_warrant_entry.closing_price) / exercise_ratio
+    if option_price <= 0.0:
+        raise Exception("Warrant price is %s" % option_price)
+#
+    logger.info("exercise_ratio=%s, spot_price=%s,  strike_price=%s, diff=%s, time_to_maturity=%s, warrant_price=%s" % (exercise_ratio, spot_price, strike_price, diff, time_to_maturity, option_price))
+    if warrant_item.is_call():
+        sigma = option_price_implied_volatility_call_black_scholes_newton(
+                              spot_price, strike_price, INTEREST_RATE, time_to_maturity, option_price)
+        delta = option_price_delta_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity) 
+        calc_warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
+    else:
+        sigma = option_price_implied_volatility_put_black_scholes_newton(
+                              spot_price, strike_price, INTEREST_RATE, time_to_maturity,option_price)
+        delta = option_price_delta_put_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity) 
+        calc_warrant_price = option_price_put_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
+    leverage = (spot_price / option_price) * delta
+    
+    logger.info("sigma=%s, delta=%s, leverage=%s, calc_warrant_price=%s" % (sigma,delta,leverage,calc_warrant_price*exercise_ratio))
+#  
+    return (time_to_maturity, sigma, delta, leverage, calc_warrant_price * exercise_ratio)
+    
+    
 
