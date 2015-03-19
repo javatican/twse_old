@@ -1,6 +1,7 @@
 # coding=utf8
 import datetime
 from django.db import models
+from django.db.models.aggregates import Max
 from django.db.models.base import Model
 from django.db.models.query import QuerySet
 from django.db.models.query_utils import Q
@@ -33,9 +34,13 @@ class TradingDateQuerySet(QuerySet, TradingDateMixin):
 class TradingDateManager(models.Manager, TradingDateMixin):
     def get_queryset(self):
         return TradingDateQuerySet(self.model, using=self._db)
+    def get_last_trading_date(self):
+        data = self.all().aggregate(Max('trading_date'))
+        return data['trading_date__max']
+
     
 class Trading_Date(Model):
-    trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
+    trading_date = models.DateField(auto_now_add=False, null=False, unique=True, verbose_name=_('trading_date')) 
     day_of_week = models.PositiveIntegerField(default=9, verbose_name=_('day_of_week'))
     is_future_delivery_day = models.BooleanField(default=False, verbose_name=_('is_future_delivery_day')) 
     first_trading_day_of_month = models.BooleanField(default=False, verbose_name=_('first_trading_day_of_month')) 
@@ -451,3 +456,30 @@ class TwseSummaryPriceProcessedManager(models.Manager, TwseSummaryPriceProcessed
 class Twse_Summary_Price_Processed(Model):
     trading_date = models.DateField(null=False, unique=True, verbose_name=_('trading_date')) 
     objects = TwseSummaryPriceProcessedManager() 
+
+
+
+class TwseIndexStatsMixin(object):
+    def by_date(self, trading_date):
+        return self.filter(trading_date=trading_date)
+        
+class TwseIndexStatsQuerySet(QuerySet, TwseIndexStatsMixin):
+    pass
+
+class TwseIndexStatsManager(models.Manager, TwseIndexStatsMixin):
+    def get_queryset(self):
+        return TwseIndexStatsQuerySet(self.model, using=self._db)
+
+class Twse_Index_Stats(Model):
+    trading_date = models.DateField(auto_now_add=False, null=False, unique=True, verbose_name=_('trading_date')) 
+#
+    trade_volume = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('trade_volume')) 
+    trade_transaction = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('trade_transaction')) 
+    trade_value = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('trade_value')) 
+    opening_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('opening_price'))
+    highest_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('highest_price'))
+    lowest_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('lowest_price'))
+    closing_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('closing_price'))
+    price_change = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('price_change'))
+    objects = TwseIndexStatsManager() 
+#

@@ -16,7 +16,8 @@ from core.models import Cron_Job_Log, Twse_Trading, \
     Warrant_Item, Stock_Item, get_stock_item_type, get_warrant_exercise_style, \
     get_warrant_classification, select_warrant_type_code, Twse_Summary_Price_Processed, \
     Index_Item, Index_Change_Info, Market_Summary_Type, Market_Summary, \
-    Stock_Up_Down_Stats, Twse_Trading_Warrant, Twse_Trading_Processed
+    Stock_Up_Down_Stats, Twse_Trading_Warrant, Twse_Trading_Processed, \
+    Trading_Date, Twse_Index_Stats
 from core2.models import Gt_Stock_Item, Gt_Warrant_Item
 from warrant_app.settings import TWSE_DOWNLOAD_1, TWSE_DOWNLOAD_2, \
     TWSE_DOWNLOAD_3, TWSE_DOWNLOAD_4, TWSE_DOWNLOAD_5, TWSE_TRADING_DOWNLOAD_URL, \
@@ -29,7 +30,7 @@ from warrant_app.utils.black_scholes import option_price_implied_volatility_call
     option_price_delta_call_black_scholes, option_price_delta_put_black_scholes, \
     option_price_call_black_scholes, option_price_put_black_scholes
 from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year, \
-    convertToDate
+    convertToDate, is_third_wednesday
 from warrant_app.utils.logutil import log_message
 from warrant_app.utils.stringutil import is_float
 from warrant_app.utils.warrant_util import check_if_warrant_item, to_dict
@@ -54,6 +55,82 @@ logger = logging.getLogger('warrant_app.cronjob')
 #         items_to_create.append(instance)
 #     Twse_Trading_Warrant.objects.bulk_create(items_to_create)
 #     
+def download_twse_index_stats_job():
+    _CREATE_TRADING_DATE_OBJECT = True
+    _CHECK_LAST_TRADING_DATE = True
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = download_twse_index_stats_job.__name__ 
+    try:    
+        serviceUrl = 'http://www.twse.com.tw/ch/trading/indices/MI_5MINS_HIST/MI_5MINS_HIST.php'
+        if _CHECK_LAST_TRADING_DATE:
+            last_trading_date = Trading_Date.objects.get_last_trading_date()
+        year = 104
+        for n in range(1,4):
+            if n<10:
+                month="0%s" % n
+            else:
+                month=n
+            parameters = {'myear': year , 'mmon': month}
+            try:        
+                httpResponse = requests.post(serviceUrl, params=parameters, stream=True)
+                httpResponse.encoding = "big5"
+            except requests.HTTPError, e:
+                result = e.read()
+                raise Exception(result)
+            
+            soup = BeautifulSoup(httpResponse.text, 'lxml')
+            table_element = soup.find('table', class_='board_trad')
+            tr_list = table_element.find_all('tr', class_='gray12')
+            trading_date_to_create = []
+            twse_index_stats_to_create = []
+            j = 0
+            for row in tr_list:
+                i = 0
+                for td_element in row.find_all('td', recursive=False):
+                    dt_data = td_element.string.strip()
+                    if i == 0:
+                        trading_date = roc_year_to_western(dt_data)
+                        if _CHECK_LAST_TRADING_DATE:
+                            if trading_date <= last_trading_date: break
+                            
+                        if _CREATE_TRADING_DATE_OBJECT:
+                            tdate = Trading_Date()
+                            tdate.trading_date = trading_date
+                            # date.weekday(): Return the day of the week as an integer, where Monday is 0 and Sunday is 6.
+                            tdate.day_of_week = tdate.trading_date.weekday() + 1
+                            if j == 0:
+                                # first trading date of the month
+                                tdate.first_trading_day_of_month = True
+#                             if j == len(tr_list) - 1:
+#                                 tdate.last_trading_day_of_month = True
+                            if is_third_wednesday(tdate.trading_date):
+                                tdate.is_future_delivery_day = True
+                            trading_date_to_create.append(tdate)
+ # 
+                        twse_index_stats=Twse_Index_Stats()
+                        twse_index_stats.trading_date = trading_date
+                    elif i==1:
+                        twse_index_stats.opening_price = float(dt_data.replace(',', ''))
+                    elif i==2:
+                        twse_index_stats.highest_price = float(dt_data.replace(',', ''))
+                    elif i==3:
+                        twse_index_stats.lowest_price = float(dt_data.replace(',', ''))
+                    elif i==4:
+                        twse_index_stats.closing_price = float(dt_data.replace(',', ''))
+                        twse_index_stats_to_create.append(twse_index_stats)                     
+                    i += 1
+                j += 1
+            if _CREATE_TRADING_DATE_OBJECT: 
+                if trading_date_to_create: Trading_Date.objects.bulk_create(trading_date_to_create)          
+            if twse_index_stats_to_create: Twse_Index_Stats.objects.bulk_create(twse_index_stats_to_create)
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        job.failed()
+        raise  
+    finally:
+        job.save()
+
 
 def twse_manage_stock_info_job():
     log_message(datetime.datetime.now())
@@ -1162,25 +1239,25 @@ def test_calc_black_scholes():
     strike_price = 58
     INTEREST_RATE = 0.0136
     time_to_maturity = 0.25
-    option_price=3.7
+    option_price = 3.7
     sigma = option_price_implied_volatility_call_black_scholes_newton(spot_price, strike_price, INTEREST_RATE, time_to_maturity,
                                                               option_price)
     delta = option_price_delta_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity) 
     warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
     #
-    logger.info(" spot_price = %s, strike_price= %s, option_price= %s" % ( spot_price, strike_price, option_price * exercise_ratio))
-    logger.info(" time_to_maturity= %s" %  time_to_maturity)
-    logger.info(" intrinsic volatility= %s, delta= %s" % ( sigma, delta * exercise_ratio))
-    logger.info(" warrant price= %s" % ( warrant_price * exercise_ratio))
+    logger.info(" spot_price = %s, strike_price= %s, option_price= %s" % (spot_price, strike_price, option_price * exercise_ratio))
+    logger.info(" time_to_maturity= %s" % time_to_maturity)
+    logger.info(" intrinsic volatility= %s, delta= %s" % (sigma, delta * exercise_ratio))
+    logger.info(" warrant price= %s" % (warrant_price * exercise_ratio))
     
-    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma-0.01, time_to_maturity)
-    logger.info(" warrant price(IV-1%%)= %s" % ( warrant_price * exercise_ratio))
-    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma+0.01, time_to_maturity)
-    logger.info(" warrant price(IV+1%%)= %s" % ( warrant_price * exercise_ratio))
-    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma+0.02, time_to_maturity)
-    logger.info(" warrant price(IV+2%%)= %s" % ( warrant_price * exercise_ratio))
-    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma+0.03, time_to_maturity)
-    logger.info(" warrant price(IV+3%%)= %s" % ( warrant_price * exercise_ratio))
+    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma - 0.01, time_to_maturity)
+    logger.info(" warrant price(IV-1%%)= %s" % (warrant_price * exercise_ratio))
+    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma + 0.01, time_to_maturity)
+    logger.info(" warrant price(IV+1%%)= %s" % (warrant_price * exercise_ratio))
+    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma + 0.02, time_to_maturity)
+    logger.info(" warrant price(IV+2%%)= %s" % (warrant_price * exercise_ratio))
+    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma + 0.03, time_to_maturity)
+    logger.info(" warrant price(IV+3%%)= %s" % (warrant_price * exercise_ratio))
 
 def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
     # get the warrant_item and trading_warrant and target_stock model instances
@@ -1285,17 +1362,17 @@ def twse_black_scholes_calc_job():
                     # some trading_warrant entries may not have corresponding stock trading entry (eg. IX0001)
                     try:
                         # calc moneyness (not related to BS algorithm)
-                        spot_price=float(stock_trading_entry.closing_price)
-                        strike_price=float(warrant_item.strike_price)
-                        moneyness=(spot_price-strike_price)/strike_price
+                        spot_price = float(stock_trading_entry.closing_price)
+                        strike_price = float(warrant_item.strike_price)
+                        moneyness = (spot_price - strike_price) / strike_price
                         if warrant_item.is_put():
-                            moneyness=-1.0*moneyness
-                        trading_warrant_entry.moneyness=moneyness
+                            moneyness = -1.0 * moneyness
+                        trading_warrant_entry.moneyness = moneyness
                         time_to_maturity, implied_volatility, delta, leverage, calc_warrant_price = _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry)
                     except:
-                        #any exception may raise, but keep the loop going
+                        # any exception may raise, but keep the loop going
                         logger.warning("Error when calculating BS values for trading_warrant_entry: ( id=%s )" % trading_warrant_entry.id)
-                        trading_warrant_entry.not_converged=True
+                        trading_warrant_entry.not_converged = True
                         trading_warrant_entry.save()  
                         continue
                     trading_warrant_entry.time_to_maturity = time_to_maturity
@@ -1345,12 +1422,12 @@ def _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry):
         calc_warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
     else:
         sigma = option_price_implied_volatility_put_black_scholes_newton(
-                              spot_price, strike_price, INTEREST_RATE, time_to_maturity,option_price)
+                              spot_price, strike_price, INTEREST_RATE, time_to_maturity, option_price)
         delta = option_price_delta_put_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity) 
         calc_warrant_price = option_price_put_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
     leverage = (spot_price / option_price) * delta
     
-    logger.info("sigma=%s, delta=%s, leverage=%s, calc_warrant_price=%s" % (sigma,delta,leverage,calc_warrant_price*exercise_ratio))
+    logger.info("sigma=%s, delta=%s, leverage=%s, calc_warrant_price=%s" % (sigma, delta, leverage, calc_warrant_price * exercise_ratio))
 #  
     return (time_to_maturity, sigma, delta, leverage, calc_warrant_price * exercise_ratio)
     
@@ -1372,12 +1449,12 @@ def update_moneyness_job():
                 if stock_trading_entry != None: 
                     # some trading_warrant entries may not have corresponding stock trading entry (eg. IX0001)
                     # calc moneyness (not related to BS algorithm)
-                    spot_price=float(stock_trading_entry.closing_price)
-                    strike_price=float(warrant_item.strike_price)
-                    moneyness=(spot_price-strike_price)/strike_price
+                    spot_price = float(stock_trading_entry.closing_price)
+                    strike_price = float(warrant_item.strike_price)
+                    moneyness = (spot_price - strike_price) / strike_price
                     if warrant_item.is_put():
-                        moneyness=-1.0*moneyness
-                    trading_warrant_entry.moneyness=moneyness
+                        moneyness = -1.0 * moneyness
+                    trading_warrant_entry.moneyness = moneyness
                     trading_warrant_entry.save()  
             transaction.commit()
         job.success()
@@ -1399,10 +1476,10 @@ def update_expired_warrant_trading_list():
     try:
         warrant_list = Warrant_Item.objects.expired_trading_list_not_set()
         for warrant in warrant_list:
-            trading_id_list = warrant.twse_trading_warrant_list.all().order_by('trading_date').values_list('id',flat=True)
-            if len(trading_id_list)==0: continue
-            trading_id_list_str=",".join([str(id) for id in trading_id_list])
-            warrant.trading_list=trading_id_list_str
+            trading_id_list = warrant.twse_trading_warrant_list.all().order_by('trading_date').values_list('id', flat=True)
+            if len(trading_id_list) == 0: continue
+            trading_id_list_str = ",".join([str(id) for id in trading_id_list])
+            warrant.trading_list = trading_id_list_str
             warrant.save()  
         transaction.commit()
         job.success()
