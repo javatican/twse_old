@@ -27,5 +27,7 @@ encoding//ipython/iv_stats/iv_stats_v1.py=utf-8
 encoding//ipython/iv_stats/iv_stats_v2.py=utf-8
 encoding//ipython/iv_stats/iv_stats_v3.py=utf-8
 encoding//ipython/iv_stats/iv_stats_v5.py=utf-8
+encoding//ipython/iv_stats/iv_stats_violin.py=utf-8
 encoding//ipython/jobs/gt_process.py=utf-8
 encoding//ipython/jobs/twse_process.py=utf-8
+encoding//ipython/warrant_trading/trading_warrant_stats.py=utf-8

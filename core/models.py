@@ -1,4 +1,5 @@
 # coding=utf8
+import datetime
 from django.db import models
 from django.db.models.base import Model
 from django.db.models.query import QuerySet
@@ -99,6 +100,9 @@ class Stock_Item(Model):
 class WarrantItemMixin(object):
     def data_not_ok(self):
         return self.filter(data_ok=False)
+    def expired_trading_list_not_set(self):
+        today = datetime.datetime.now().date()
+        return self.filter(last_trading_date__lt=today, trading_list__isnull=True)
         
 class WarrantItemQuerySet(QuerySet, WarrantItemMixin):
     pass
@@ -154,18 +158,25 @@ class Warrant_Item(Model):
     strike_price = models.DecimalField(max_digits=8, decimal_places=2, default=0, verbose_name=_('strike_price'))
     data_ok = models.BooleanField(default=False, verbose_name=_('data_ok')) 
     type_code = models.CharField(max_length=1, default='1', choices=_TYPE_CHOICES, verbose_name=_('stock_type'))
+    trading_list = models.TextField(null=True, verbose_name=_('trading_list'))
 
     objects = WarrantItemManager() 
     def is_call(self):
         return self.classification == CLASSIFICATION_CODE['CALL']
     def is_put(self):
         return self.classification == CLASSIFICATION_CODE['PUT']
-
+    
     def is_twse_stock(self): 
         return self.type_code == _TYPE_TWSE
     def is_gt_stock(self): 
         return self.type_code == _TYPE_GT  
     
+    def get_trading_warrant_list(self):
+        if self.trading_list==None:
+            return  self.twse_trading_warrant_list.all()
+        else:
+            trading_list_str=self.trading_list.split(',')
+            return Twse_Trading_Warrant.objects.filter(id__in=trading_list_str)
 class TwseTradingMixin(object):
     def by_date(self, trading_date):
         return self.filter(trading_date=trading_date)
@@ -243,7 +254,8 @@ class TwseTradingWarrantManager(models.Manager, TwseTradingWarrantMixin):
         return self.filter(time_to_maturity__isnull=True, not_converged__isnull=True).distinct().values_list('trading_date', flat=True)
     def get_date_with_missing_target_trading_info(self):
         return self.filter(target_stock_trading__isnull=True).distinct().values_list('trading_date', flat=True)
-  
+    def get_trade_info_by_date(self, trading_date):
+        return self.filter(trade_volume__isnull=False, trading_date=trading_date).values_list('trade_volume','trade_transaction','trade_value')
 class Twse_Trading_Warrant(Model):
     warrant_symbol = models.ForeignKey("core.Warrant_Item", null=True, related_name="twse_trading_warrant_list", verbose_name=_('warrant_symbol'))
     target_stock_symbol = models.ForeignKey("core.Stock_Item", null=True, related_name="twse_trading_warrant_list2", verbose_name=_('target_stock_symbol'))

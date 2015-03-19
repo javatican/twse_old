@@ -1156,6 +1156,32 @@ def _split_string(s_data):
     part2 = s_data[pos + 1:len(s_data) - 1]
     return (part1, part2)
 
+def test_calc_black_scholes():
+    exercise_ratio = 1.0
+    spot_price = 58
+    strike_price = 58
+    INTEREST_RATE = 0.0136
+    time_to_maturity = 0.25
+    option_price=3.7
+    sigma = option_price_implied_volatility_call_black_scholes_newton(spot_price, strike_price, INTEREST_RATE, time_to_maturity,
+                                                              option_price)
+    delta = option_price_delta_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity) 
+    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
+    #
+    logger.info(" spot_price = %s, strike_price= %s, option_price= %s" % ( spot_price, strike_price, option_price * exercise_ratio))
+    logger.info(" time_to_maturity= %s" %  time_to_maturity)
+    logger.info(" intrinsic volatility= %s, delta= %s" % ( sigma, delta * exercise_ratio))
+    logger.info(" warrant price= %s" % ( warrant_price * exercise_ratio))
+    
+    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma-0.01, time_to_maturity)
+    logger.info(" warrant price(IV-1%%)= %s" % ( warrant_price * exercise_ratio))
+    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma+0.01, time_to_maturity)
+    logger.info(" warrant price(IV+1%%)= %s" % ( warrant_price * exercise_ratio))
+    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma+0.02, time_to_maturity)
+    logger.info(" warrant price(IV+2%%)= %s" % ( warrant_price * exercise_ratio))
+    warrant_price = option_price_call_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma+0.03, time_to_maturity)
+    logger.info(" warrant price(IV+3%%)= %s" % ( warrant_price * exercise_ratio))
+
 def test_black_scholes_job(warrant_symbol, qdate, use_closing_price=False):
     # get the warrant_item and trading_warrant and target_stock model instances
     try:
@@ -1354,6 +1380,31 @@ def update_moneyness_job():
                     trading_warrant_entry.moneyness=moneyness
                     trading_warrant_entry.save()  
             transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+
+def update_expired_warrant_trading_list(): 
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = update_expired_warrant_trading_list.__name__  
+    try:
+        warrant_list = Warrant_Item.objects.expired_trading_list_not_set()
+        for warrant in warrant_list:
+            trading_id_list = warrant.twse_trading_warrant_list.all().order_by('trading_date').values_list('id',flat=True)
+            if len(trading_id_list)==0: continue
+            trading_id_list_str=",".join([str(id) for id in trading_id_list])
+            warrant.trading_list=trading_id_list_str
+            warrant.save()  
+        transaction.commit()
         job.success()
     except: 
         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)

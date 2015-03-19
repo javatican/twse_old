@@ -44,12 +44,12 @@ if _FORCE_REGEN or not os.path.isfile(filename):
                'hedge_sell_data':hedge_sell_data}
     with open(filename, 'w') as fp:
         json.dump(json_data, fp, cls=DateEncoder)
-else:
-    with open(filename, 'r') as fp:
-        json_data=json.load(fp) 
-    trading_date_list =json_data['trading_date_list']
-    hedge_buy_data=json_data['hedge_buy_data']
-    hedge_sell_data=json_data['hedge_sell_data']
+
+with open(filename, 'r') as fp:
+    json_data=json.load(fp) 
+trading_date_list =json_data['trading_date_list']
+hedge_buy_data=json_data['hedge_buy_data']
+hedge_sell_data=json_data['hedge_sell_data']
 #***preparing plot
 trading_date_list=np.array(trading_date_list)
 hedge_buy_data=np.array(hedge_buy_data)
@@ -67,11 +67,8 @@ others=[]
 i=0
 previous_date=None
 for trading_date_str in trading_date_list:
-    if isinstance(trading_date_str,str):
-        trading_date = string_to_date(trading_date_str, date_format='%Y-%m-%d')
-    else:
-        trading_date = trading_date_str
-    day_of_week= trading_date.weekday()+1
+    trading_date = string_to_date(trading_date_str, date_format='%Y-%m-%d')
+    day_of_week = trading_date.weekday() + 1
     if day_of_week==1:
         mon.append(i)
     elif day_of_week==2:
@@ -136,6 +133,10 @@ axarr[1].legend((rect_btw_gap[0], rect_others[0]),
                 ncol=2,
                 loc='upper left')
 fig.set_size_inches(18.5,10.5)
+# water mark position bottom right
+fig.text(0.95, 0.05, 'Property of ryan.nieh@gmail.com',
+         fontsize=50, color='gray',
+         ha='right', va='bottom', alpha=0.5)
 if _INTERACTIVE:
     plt.show()
 else:

@@ -39,7 +39,7 @@ if _FORCE_REGEN or not os.path.isfile(filename):
     warrant_list = Warrant_Item.objects.all()
     for warrant in warrant_list:
         a_list = warrant.twse_trading_warrant_list.filter(Q(implied_volatility__isnull=False), Q(moneyness__lt=-0.15)|Q(moneyness__gt=0.15)|Q(time_to_maturity__lt=0.1)).order_by('trading_date').values_list('trading_date','implied_volatility')
-        #a_list = warrant.twse_trading_warrant_list.filter(implied_volatility__isnull=False, moneyness__gt=-0.15,moneyness__lt=0.15),time_to_maturity__gt=0.1).order_by('trading_date').values_list('trading_date','implied_volatility')
+        #a_list = warrant.twse_trading_warrant_list.filter(implied_volatility__isnull=False, moneyness__gt=-0.15,moneyness__lt=0.15,time_to_maturity__gt=0.1).order_by('trading_date').values_list('trading_date','implied_volatility')
         #create a dict to store (date,iv) pair
         a_dict={}
         for item in a_list:

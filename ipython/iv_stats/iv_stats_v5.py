@@ -169,6 +169,10 @@ axarr[1].legend((rect_btw_gap[0], rect_others[0]),
                 ncol=2,
                 loc='upper left')
 fig.set_size_inches(18.5, 10.5)
+# water mark position bottom right
+fig.text(0.95, 0.05, 'Property of ryan.nieh@gmail.com ',
+         fontsize=50, color='gray',
+         ha='right', va='bottom', alpha=0.5)
 if _INTERACTIVE:
     plt.show()
 else:
