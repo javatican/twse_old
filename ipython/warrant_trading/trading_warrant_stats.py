@@ -11,7 +11,7 @@ from core.models import Twse_Trading_Processed, \
     Twse_Trading_Warrant
 import numpy as np
 from warrant_app.utils.dateutil import DateEncoder
-from warrant_app.utils.mpl_util import kde_method, set_colors, get_weekday_array
+from warrant_app.utils.mpl_util import kde_method, color_violin_by_weekday, get_weekday_array
 
 
 _FORCE_REGEN=False
@@ -80,15 +80,15 @@ fig, axarr = plt.subplots(3, sharex=True)
 #
 v_stats = violin_stats(trade_volume_data, kde_method, points=100)
 result = axarr[0].violin(v_stats, positions=x_pos, vert=True, widths=0.95, showextrema=True, showmedians=True)
-set_colors(result['bodies'], mon,tue,wed,thr,fri,sat)
+color_violin_by_weekday(result['bodies'], mon,tue,wed,thr,fri,sat)
 #
 v_stats = violin_stats(trade_transaction_data, kde_method, points=100)
 result = axarr[1].violin(v_stats, positions=x_pos, vert=True, widths=0.95, showextrema=True, showmedians=True)
-set_colors(result['bodies'], mon,tue,wed,thr,fri,sat)
+color_violin_by_weekday(result['bodies'], mon,tue,wed,thr,fri,sat)
 #
 v_stats = violin_stats(trade_value_data, kde_method, points=100)
 result = axarr[2].violin(v_stats, positions=x_pos, vert=True, widths=0.95, showextrema=True, showmedians=True)
-set_colors(result['bodies'], mon,tue,wed,thr,fri,sat)
+color_violin_by_weekday(result['bodies'], mon,tue,wed,thr,fri,sat)
 #
        
 axarr[0].set_ylabel('Trading Volume')

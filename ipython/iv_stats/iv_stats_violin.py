@@ -11,8 +11,8 @@ import os
 from core.models import Twse_Trading_Processed, Warrant_Item
 import numpy as np
 from warrant_app.utils.dateutil import DateEncoder
-from warrant_app.utils.mpl_util import get_weekday_array, kde_method, set_colors, \
-    set_colors_2
+from warrant_app.utils.mpl_util import get_weekday_array, kde_method, color_violin_by_weekday, \
+    color_violin_by_btw_gap
 
 _FORCE_REGEN=False
 _INTERACTIVE = True
@@ -104,7 +104,7 @@ v_stats = violin_stats(iv_diff_data, kde_method, points=200)
 
 result = axarr[0].violin(v_stats, positions=x_pos, vert=True, widths=0.95, showextrema=False, showmedians=True)
 #get list of matplotlib.collections.PolyCollection
-set_colors(result['bodies'], mon,tue,wed,thr,fri,sat)
+color_violin_by_weekday(result['bodies'], mon,tue,wed,thr,fri,sat)
 
 axarr[0].set_ylabel('Difference from average')
 axarr[0].set_title('Distribution of Warrant IV variation from averages')
@@ -121,7 +121,7 @@ else:
     
 result = axarr[1].violin(v_stats, positions=x_pos, widths=0.95,
                       showextrema=False, showmedians=True)
-set_colors_2(result['bodies'], between_gap, others)
+color_violin_by_btw_gap(result['bodies'], between_gap, others)
         
 axarr[1].set_xticks(x_pos[::5])
 axarr[1].set_xticks(x_pos, minor=True)

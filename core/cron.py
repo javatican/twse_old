@@ -56,6 +56,8 @@ logger = logging.getLogger('warrant_app.cronjob')
 #     Twse_Trading_Warrant.objects.bulk_create(items_to_create)
 #     
 def download_twse_index_stats_job():
+    # this job is used to download twse index open,high, low, close index
+    # as well as create Trading_Date entry
     _CREATE_TRADING_DATE_OBJECT = True
     _CHECK_LAST_TRADING_DATE = True
     log_message(datetime.datetime.now())
@@ -65,12 +67,13 @@ def download_twse_index_stats_job():
         serviceUrl = 'http://www.twse.com.tw/ch/trading/indices/MI_5MINS_HIST/MI_5MINS_HIST.php'
         if _CHECK_LAST_TRADING_DATE:
             last_trading_date = Trading_Date.objects.get_last_trading_date()
+        # the year parameter is in ROC year , month with 2 digits
         year = 104
-        for n in range(1,4):
-            if n<10:
-                month="0%s" % n
+        for n in range(3, 4):
+            if n < 10:
+                month = "0%s" % n
             else:
-                month=n
+                month = n
             parameters = {'myear': year , 'mmon': month}
             try:        
                 httpResponse = requests.post(serviceUrl, params=parameters, stream=True)
@@ -108,15 +111,15 @@ def download_twse_index_stats_job():
                                 tdate.is_future_delivery_day = True
                             trading_date_to_create.append(tdate)
  # 
-                        twse_index_stats=Twse_Index_Stats()
+                        twse_index_stats = Twse_Index_Stats()
                         twse_index_stats.trading_date = trading_date
-                    elif i==1:
+                    elif i == 1:
                         twse_index_stats.opening_price = float(dt_data.replace(',', ''))
-                    elif i==2:
+                    elif i == 2:
                         twse_index_stats.highest_price = float(dt_data.replace(',', ''))
-                    elif i==3:
+                    elif i == 3:
                         twse_index_stats.lowest_price = float(dt_data.replace(',', ''))
-                    elif i==4:
+                    elif i == 4:
                         twse_index_stats.closing_price = float(dt_data.replace(',', ''))
                         twse_index_stats_to_create.append(twse_index_stats)                     
                     i += 1
@@ -131,7 +134,64 @@ def download_twse_index_stats_job():
     finally:
         job.save()
 
-
+def download_twse_index_stats2_job():
+    # this job is used to update Twse_Index_Stats's 
+    # trade_volume, trade_transaction, trade_value data.
+    # Need to be run after download_twse_index_stats_job
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = download_twse_index_stats2_job.__name__ 
+    try:  
+        # the year parameter is in Western year , month with 2 digits  
+        year = 2015
+        for n in range(3, 4):
+            if n < 10:
+                month = "0%s" % n
+            else:
+                month = n
+            try:        
+                serviceUrl = 'http://www.twse.com.tw/ch/trading/exchange/FMTQIK/genpage/Report%s%s/%s%s_F3_1_2.php?STK_NO=&myear=%s&mmon=%s' % (year, month, year, month, year, month)
+                httpResponse = requests.get(serviceUrl)
+                httpResponse.encoding = "big5"
+            except requests.HTTPError, e:
+                result = e.read()
+                raise Exception(result)
+            
+            soup = BeautifulSoup(httpResponse.text, 'lxml')
+            table_element = soup.find('table', class_='board_trad')
+            tr_list = table_element.find_all('tr', class_='basic2')
+            twse_index_stats_to_update = []
+            j = 0
+            for row in tr_list[1:]:
+                i = 0
+                for td_element in row.find_all('td', recursive=False):
+                    dt_data = td_element.string.strip()
+                    if i == 0:
+                        trading_date = roc_year_to_western(dt_data)
+                        try:
+                            twse_index_stats = Twse_Index_Stats.objects.by_date(trading_date)
+                        except:
+                            break
+                    elif i == 1:
+                        twse_index_stats.trade_volume = float(dt_data.replace(',', ''))
+                    elif i == 2:
+                        twse_index_stats.trade_value = float(dt_data.replace(',', ''))
+                    elif i == 3:
+                        twse_index_stats.trade_transaction = float(dt_data.replace(',', ''))
+                        twse_index_stats_to_update.append(twse_index_stats)  
+                        break                   
+                    i += 1
+                j += 1   
+            if twse_index_stats_to_update: 
+                for item in twse_index_stats_to_update:
+                    item.save()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        job.failed()
+        raise  
+    finally:
+        job.save()
+        
 def twse_manage_stock_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()

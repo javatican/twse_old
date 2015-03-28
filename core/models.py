@@ -6,6 +6,7 @@ from django.db.models.base import Model
 from django.db.models.query import QuerySet
 from django.db.models.query_utils import Q
 from django.utils.translation import ugettext_lazy as _
+from matplotlib.dates import date2num
 
 
 class Cron_Job_Log(Model):
@@ -177,10 +178,10 @@ class Warrant_Item(Model):
         return self.type_code == _TYPE_GT  
     
     def get_trading_warrant_list(self):
-        if self.trading_list==None:
+        if self.trading_list == None:
             return  self.twse_trading_warrant_list.all()
         else:
-            trading_list_str=self.trading_list.split(',')
+            trading_list_str = self.trading_list.split(',')
             return Twse_Trading_Warrant.objects.filter(id__in=trading_list_str)
 class TwseTradingMixin(object):
     def by_date(self, trading_date):
@@ -260,7 +261,7 @@ class TwseTradingWarrantManager(models.Manager, TwseTradingWarrantMixin):
     def get_date_with_missing_target_trading_info(self):
         return self.filter(target_stock_trading__isnull=True).distinct().values_list('trading_date', flat=True)
     def get_trade_info_by_date(self, trading_date):
-        return self.filter(trade_volume__isnull=False, trading_date=trading_date).values_list('trade_volume','trade_transaction','trade_value')
+        return self.filter(trade_volume__isnull=False, trading_date=trading_date).values_list('trade_volume', 'trade_transaction', 'trade_value')
 class Twse_Trading_Warrant(Model):
     warrant_symbol = models.ForeignKey("core.Warrant_Item", null=True, related_name="twse_trading_warrant_list", verbose_name=_('warrant_symbol'))
     target_stock_symbol = models.ForeignKey("core.Stock_Item", null=True, related_name="twse_trading_warrant_list2", verbose_name=_('target_stock_symbol'))
@@ -292,14 +293,14 @@ class Twse_Trading_Warrant(Model):
     last_best_bid_volume = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('last_best_bid_volume'))
     last_best_ask_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('last_best_ask_price'))
     last_best_ask_volume = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('last_best_ask_volume'))
-#Black Scholes data
+# Black Scholes data
     time_to_maturity = models.DecimalField(max_digits=6, decimal_places=4, null=True, verbose_name=_('time_to_maturity')) 
     implied_volatility = models.DecimalField(max_digits=6, decimal_places=4, null=True, verbose_name=_('implied_volatility')) 
     delta = models.DecimalField(max_digits=7, decimal_places=4, null=True, verbose_name=_('delta')) 
     leverage = models.DecimalField(max_digits=7, decimal_places=2, null=True, verbose_name=_('leverage')) 
     calc_warrant_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, verbose_name=_('calc_warrant_price'))
     not_converged = models.NullBooleanField(null=True, verbose_name=_('not_converged'))  
-#others
+# others
     moneyness = models.DecimalField(max_digits=9, decimal_places=3, null=True, verbose_name=_('moneyness')) 
     
     
@@ -460,16 +461,36 @@ class Twse_Summary_Price_Processed(Model):
 
 
 class TwseIndexStatsMixin(object):
-    def by_date(self, trading_date):
-        return self.filter(trading_date=trading_date)
-        
+    def between_dates(self, start_date, end_date):
+        return self.filter(trading_date__gte=start_date, trading_date__lte=start_date)
+
 class TwseIndexStatsQuerySet(QuerySet, TwseIndexStatsMixin):
     pass
 
 class TwseIndexStatsManager(models.Manager, TwseIndexStatsMixin):
     def get_queryset(self):
         return TwseIndexStatsQuerySet(self.model, using=self._db)
-
+    def by_date(self, trading_date):
+        return self.get(trading_date=trading_date)
+    def ohlc_between_dates(self, start_date, end_date, date_as_num=False):
+        # return list of tuples containing d, open, high, low, close, volume
+        entries = self.filter(trading_date__gte=start_date, trading_date__lte=end_date)
+        if date_as_num:
+            result = [(date2num(entry.trading_date), 
+                   float(entry.opening_price), 
+                   float(entry.highest_price), 
+                   float(entry.lowest_price), 
+                   float(entry.closing_price), 
+                   float(entry.trade_value)) for entry in entries]
+        else:
+            result = [(entry.trading_date, 
+                   float(entry.opening_price), 
+                   float(entry.highest_price), 
+                   float(entry.lowest_price), 
+                   float(entry.closing_price), 
+                   float(entry.trade_value)) for entry in entries]
+        return result
+    
 class Twse_Index_Stats(Model):
     trading_date = models.DateField(auto_now_add=False, null=False, unique=True, verbose_name=_('trading_date')) 
 #

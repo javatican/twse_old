@@ -61,7 +61,7 @@ if _FORCE_REGEN or not os.path.isfile(filename):
         iv_below=iv_array[DAY_AVERAGE:] < avg_array
         iv_below=iv_below.astype(int)
         iv_flat=iv_array[DAY_AVERAGE:] == avg_array
-        iv_below=iv_below.astype(int)
+        iv_flat=iv_flat.astype(int)
         iv_above_sum=iv_above_sum+iv_above
         iv_below_sum=iv_below_sum+iv_below
         iv_flat_sum=iv_flat_sum+iv_flat
