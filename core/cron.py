@@ -11,6 +11,7 @@ from requests import Session
 import requests
 import sys
 import time
+import numpy as np
 
 from core.models import Cron_Job_Log, Twse_Trading, \
     Warrant_Item, Stock_Item, get_stock_item_type, get_warrant_exercise_style, \
@@ -170,6 +171,8 @@ def download_twse_index_stats2_job():
                         trading_date = roc_year_to_western(dt_data)
                         try:
                             twse_index_stats = Twse_Index_Stats.objects.by_date(trading_date)
+                            if twse_index_stats.trade_volume > 0: 
+                                break
                         except:
                             break
                     elif i == 1:
@@ -192,6 +195,64 @@ def download_twse_index_stats2_job():
     finally:
         job.save()
         
+def twse_index_avg_calc_job():
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = twse_index_avg_calc_job.__name__ 
+    UPDATE_MISSING_ONLY = True 
+    try:
+        if UPDATE_MISSING_ONLY:
+            missing_items = Twse_Index_Stats.objects.get_missing_avg().order_by('trading_date')
+            for item in missing_items:
+                # get prices by descending order on 'trading_date'
+                price_list = Twse_Index_Stats.objects.price_lte_date(item.trading_date).order_by('-trading_date')[:240]
+                price_list_count = len(price_list)
+                #
+                fieldname_list = ['week_avg', 'two_week_avg', 'month_avg', 'quarter_avg', 'half_avg', 'year_avg']
+                DAY_AVERAGE_LIST = [5, 10, 20, 60, 120, 240]
+                for fieldname, DAY_AVERAGE in zip(fieldname_list, DAY_AVERAGE_LIST):
+                    if price_list_count < DAY_AVERAGE:
+                        break
+                    else:
+                        # calc avg
+                        avg_price = np.average(np.array([float(price) for price in price_list[:DAY_AVERAGE]]))
+                        setattr(item, fieldname, avg_price) 
+                item.save()                       
+        else:
+            # this will recalc all avg values for all Twse_Index_Stats entries in DB
+            items = Twse_Index_Stats.objects.all().order_by('trading_date')
+            price_list = []
+            for item in items:
+                # trading_date_list.append(item.trading_date)
+                price_list.append(float(item.closing_price))
+            price_array = np.array(price_list) 
+            item_count = len(price_list)
+            fieldname_list = ['week_avg', 'two_week_avg', 'month_avg', 'quarter_avg', 'half_avg', 'year_avg']
+            DAY_AVERAGE_LIST = [5, 10, 20, 60, 120, 240]
+            for fieldname, DAY_AVERAGE in zip(fieldname_list, DAY_AVERAGE_LIST):
+                avg_array = np.zeros(item_count - DAY_AVERAGE + 1)
+                for j in np.arange(DAY_AVERAGE):
+                    sli = slice(j, item_count - DAY_AVERAGE + j + 1)
+                    avg_array = avg_array + price_array[sli]
+                avg_array = avg_array / DAY_AVERAGE
+                # update fields
+                for item, price in zip(items[DAY_AVERAGE - 1:], avg_array):
+                    setattr(item, fieldname, price) 
+            for item in items:
+                item.save()
+        transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+
 def twse_manage_stock_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()

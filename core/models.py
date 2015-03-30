@@ -235,6 +235,20 @@ class Twse_Trading(Model):
     last_best_bid_volume = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('last_best_bid_volume'))
     last_best_ask_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('last_best_ask_price'))
     last_best_ask_volume = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('last_best_ask_volume'))
+#
+    week_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('week_avg'))
+    two_week_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('two_week_avg'))
+    month_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('month_avg'))
+    quarter_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('quarter_avg'))
+    half_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('half_avg'))
+    year_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('year_avg'))
+    day_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('day_k'))
+    day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('day_d'))
+    week_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('week_k'))
+    week_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('week_d'))
+    month_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('month_k'))
+    month_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('month_d'))
+#
     objects = TwseTradingManager() 
 #
     class Meta:
@@ -463,7 +477,11 @@ class Twse_Summary_Price_Processed(Model):
 class TwseIndexStatsMixin(object):
     def between_dates(self, start_date, end_date):
         return self.filter(trading_date__gte=start_date, trading_date__lte=start_date)
-
+    def lte_date(self, target_date):
+        return self.filter(trading_date__lte=target_date)
+    def get_missing_avg(self):
+        return self.filter(week_avg__isnull=True)
+    
 class TwseIndexStatsQuerySet(QuerySet, TwseIndexStatsMixin):
     pass
 
@@ -491,6 +509,13 @@ class TwseIndexStatsManager(models.Manager, TwseIndexStatsMixin):
                    float(entry.trade_value)) for entry in entries]
         return result
     
+    def get_dates_for_missing_avg(self):
+        return self.filter(week_avg__isnull=True).values_list('trading_date', flat=True)
+    def price_lte_date(self, target_date):
+        return self.lte_date(target_date).values_list('closing_price', flat=True)
+#     def get_closing_prices(self):
+#         return self.all().order_by('trading_date').values_list('trading_date','closing_price')
+    
 class Twse_Index_Stats(Model):
     trading_date = models.DateField(auto_now_add=False, null=False, unique=True, verbose_name=_('trading_date')) 
 #
@@ -502,5 +527,18 @@ class Twse_Index_Stats(Model):
     lowest_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('lowest_price'))
     closing_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('closing_price'))
     price_change = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name=_('price_change'))
+#
+    week_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('week_avg'))
+    two_week_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('two_week_avg'))
+    month_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('month_avg'))
+    quarter_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('quarter_avg'))
+    half_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('half_avg'))
+    year_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('year_avg'))
+    day_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('day_k'))
+    day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('day_d'))
+    week_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('week_k'))
+    week_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('week_d'))
+    month_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('month_k'))
+    month_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('month_d'))
     objects = TwseIndexStatsManager() 
 #

@@ -57,7 +57,7 @@ if _FORCE_REGEN or not os.path.isfile(filename):
         future_avg_array=np.zeros(trading_date_count-DAY_AVERAGE)
 #
         for j in np.arange(DAY_AVERAGE):
-            sli=slice(j+1, trading_date_count-1*DAY_AVERAGE+j+1)
+            sli=slice(j+1, trading_date_count-DAY_AVERAGE+j+1)
             future_avg_array=future_avg_array+price_array[sli]
         # any np.nan value will still be np.nan after addition, division operations.
         future_avg_array=future_avg_array/DAY_AVERAGE
