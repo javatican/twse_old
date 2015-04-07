@@ -11,15 +11,15 @@ from requests import Session
 import requests
 import sys
 import time
-import numpy as np
 
 from core.models import Cron_Job_Log, Twse_Trading, \
     Warrant_Item, Stock_Item, get_stock_item_type, get_warrant_exercise_style, \
     get_warrant_classification, select_warrant_type_code, Twse_Summary_Price_Processed, \
     Index_Item, Index_Change_Info, Market_Summary_Type, Market_Summary, \
     Stock_Up_Down_Stats, Twse_Trading_Warrant, Twse_Trading_Processed, \
-    Trading_Date, Twse_Index_Stats
+    Trading_Date, Twse_Index_Stats, Twse_Trading_Strategy
 from core2.models import Gt_Stock_Item, Gt_Warrant_Item
+import numpy as np
 from warrant_app.settings import TWSE_DOWNLOAD_1, TWSE_DOWNLOAD_2, \
     TWSE_DOWNLOAD_3, TWSE_DOWNLOAD_4, TWSE_DOWNLOAD_5, TWSE_TRADING_DOWNLOAD_URL, \
     TWSE_PRICE_DOWNLOAD_URL, TWSE_DOWNLOAD_0, TWSE_DOWNLOAD_A, \
@@ -34,6 +34,8 @@ from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year,
     convertToDate, is_third_wednesday
 from warrant_app.utils.logutil import log_message
 from warrant_app.utils.stringutil import is_float
+from warrant_app.utils.trading_util import moving_avg, \
+    calc_stochastic_oscillator, calc_di_adx
 from warrant_app.utils.warrant_util import check_if_warrant_item, to_dict
 
 
@@ -70,7 +72,7 @@ def download_twse_index_stats_job():
             last_trading_date = Trading_Date.objects.get_last_trading_date()
         # the year parameter is in ROC year , month with 2 digits
         year = 104
-        for n in range(3, 4):
+        for n in range(4,5):
             if n < 10:
                 month = "0%s" % n
             else:
@@ -145,7 +147,7 @@ def download_twse_index_stats2_job():
     try:  
         # the year parameter is in Western year , month with 2 digits  
         year = 2015
-        for n in range(3, 4):
+        for n in range(4,5):
             if n < 10:
                 month = "0%s" % n
             else:
@@ -224,18 +226,15 @@ def twse_index_avg_calc_job():
             items = Twse_Index_Stats.objects.all().order_by('trading_date')
             price_list = []
             for item in items:
-                # trading_date_list.append(item.trading_date)
                 price_list.append(float(item.closing_price))
             price_array = np.array(price_list) 
-            item_count = len(price_list)
             fieldname_list = ['week_avg', 'two_week_avg', 'month_avg', 'quarter_avg', 'half_avg', 'year_avg']
             DAY_AVERAGE_LIST = [5, 10, 20, 60, 120, 240]
             for fieldname, DAY_AVERAGE in zip(fieldname_list, DAY_AVERAGE_LIST):
-                avg_array = np.zeros(item_count - DAY_AVERAGE + 1)
-                for j in np.arange(DAY_AVERAGE):
-                    sli = slice(j, item_count - DAY_AVERAGE + j + 1)
-                    avg_array = avg_array + price_array[sli]
-                avg_array = avg_array / DAY_AVERAGE
+                try:
+                    avg_array = moving_avg(price_array, DAY_AVERAGE)
+                except:
+                     break
                 # update fields
                 for item, price in zip(items[DAY_AVERAGE - 1:], avg_array):
                     setattr(item, fieldname, price) 
@@ -253,6 +252,207 @@ def twse_index_avg_calc_job():
         transaction.commit()
         transaction.set_autocommit(True)
 
+def twse_stock_price_avg_calc_job():
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = twse_stock_price_avg_calc_job.__name__ 
+    UPDATE_MISSING_ONLY = False 
+    try:
+        if UPDATE_MISSING_ONLY:
+            stock_items = Stock_Item.objects.all()
+            for stock in stock_items:
+                missing_items = stock.twse_trading_list.get_missing_avg().order_by('trading_date')
+                
+                for item in missing_items:
+                    # get prices by descending order on 'trading_date'
+                    price_list = stock.twse_trading_list.price_lte_date(item.trading_date).order_by('-trading_date')[:240]
+                    price_list_count = len(price_list)
+ #
+                    fieldname_list = ['week_avg', 'two_week_avg', 'month_avg', 'quarter_avg', 'half_avg', 'year_avg']
+                    DAY_AVERAGE_LIST = [5, 10, 20, 60, 120, 240]
+                    for fieldname, DAY_AVERAGE in zip(fieldname_list, DAY_AVERAGE_LIST):
+                        if price_list_count < DAY_AVERAGE:
+                            break
+                        else:
+                            # calc avg
+                            avg_price = np.average(np.array([float(price) for price in price_list[:DAY_AVERAGE]]))
+                            setattr(item, fieldname, avg_price) 
+                    item.save()                       
+        else:
+            # this will recalc all avg values for all Twse_trading entries in DB
+            # first get all stock_items
+            stock_items = Stock_Item.objects.all()
+            for stock in stock_items:
+                items = stock.twse_trading_list.all().order_by('trading_date')
+                price_list = []
+                for item in items:
+                    price_list.append(float(item.closing_price))
+                price_array = np.array(price_list) 
+                fieldname_list = ['week_avg', 'two_week_avg', 'month_avg', 'quarter_avg', 'half_avg', 'year_avg']
+                DAY_AVERAGE_LIST = [5, 10, 20, 60, 120, 240]
+                for fieldname, DAY_AVERAGE in zip(fieldname_list, DAY_AVERAGE_LIST):
+                    try:
+                        avg_array = moving_avg(price_array, DAY_AVERAGE)
+                    except:
+                        break
+                    # update fields
+                    for item, price in zip(items[DAY_AVERAGE - 1:], avg_array):
+                        setattr(item, fieldname, price) 
+                for item in items:
+                    item.save()
+        transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+        
+def twse_stock_calc_stoch_osci_job():
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = twse_stock_calc_stoch_osci_job.__name__ 
+    UPDATE_MISSING_ONLY = False 
+    try:
+        if UPDATE_MISSING_ONLY:
+            # TODO
+            pass                     
+        else:
+            # this will recalc all stoch_osci values for all Twse_trading entries in DB
+            # first get all stock_items
+            stock_items = Stock_Item.objects.all()
+            #stock_items = Stock_Item.objects.filter(symbol='2312')
+            for stock in stock_items:
+                strategy_items_to_update=set()
+                items = stock.twse_trading_list.all().select_related('strategy').order_by('trading_date')
+                highest_price_list = []
+                lowest_price_list = []
+                closing_price_list = []
+                for item in items:
+                    highest_price_list.append(float(item.highest_price))
+                    lowest_price_list.append(float(item.lowest_price))
+                    closing_price_list.append(float(item.closing_price))
+                highest_array = np.array(highest_price_list)
+                lowest_array = np.array(lowest_price_list)
+                closing_array = np.array(closing_price_list)
+                # 14-day stochastic oscillator
+                LOOK_BACK_PERIOD = 14
+                K_SMOOTHING = 3
+                D_MOVING_AVERAGE = 3
+                try:
+                    k_array, d_array = calc_stochastic_oscillator(highest_array, lowest_array, closing_array, LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE)
+                    for j, item in enumerate(items[LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3:]):
+                        tts = item.strategy
+                        tts.fourteen_day_k = k_array[j]
+                        tts.fourteen_day_d = d_array[j]
+                        strategy_items_to_update.add(tts)
+                except:
+                    logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, stock.id))
+                    continue
+                # 70-day stochastic oscillator
+                LOOK_BACK_PERIOD = 70
+                K_SMOOTHING = 3
+                D_MOVING_AVERAGE = 3
+                try:
+                    k_array, d_array = calc_stochastic_oscillator(highest_array, lowest_array, closing_array, LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE)
+                    for j, item in enumerate(items[LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3:]):
+                        tts = item.strategy
+                        tts.seventy_day_k = k_array[j]
+                        tts.seventy_day_d = d_array[j]
+                        strategy_items_to_update.add(tts)
+                except:
+                    logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, stock.id))                    
+                    continue
+                
+                # calculate +DI14, -DI14, ADX for each trading date
+                SMOOTHING_FACTOR=14
+                try:
+                    pdi14_array, ndi14_array, adx_array = calc_di_adx(highest_array, lowest_array, closing_array, SMOOTHING_FACTOR)
+                    for j, item in enumerate(items[SMOOTHING_FACTOR+SMOOTHING_FACTOR-1:]):
+                        tts = item.strategy
+                        tts.pdi14 = pdi14_array[j]
+                        tts.ndi14 = ndi14_array[j]
+                        tts.adx = adx_array[j]
+                        strategy_items_to_update.add(tts)
+                except:
+                    logger.warning("Error when calculating average directional index with for stock pk= %s" % stock.id)
+                    continue
+                #update tts
+                for item in strategy_items_to_update:
+                    item.save()
+                
+        transaction.commit()
+        job.success()
+    except: 
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+
+# def twse_stock_calc_avg_dir_index_job():
+#     # refer to : http://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:average_directional_index_adx
+#     transaction.set_autocommit(False)
+#     log_message(datetime.datetime.now())
+#     job = Cron_Job_Log()
+#     job.title = twse_stock_calc_avg_dir_index_job.__name__ 
+#     UPDATE_MISSING_ONLY = False 
+#     try:
+#         if UPDATE_MISSING_ONLY:
+#             # TODO
+#             pass                     
+#         else:
+#             # this will recalc all ADX values for all Twse_trading entries in DB
+#             # first get all stock_items
+#             stock_items = Stock_Item.objects.all()
+#             # stock_items = Stock_Item.objects.filter(symbol='2312')
+#             for stock in stock_items:
+#                 items = stock.twse_trading_list.all().select_related('strategy').order_by('trading_date')
+#                 highest_price_list = []
+#                 lowest_price_list = []
+#                 closing_price_list = []
+#                 for item in items:
+#                     highest_price_list.append(float(item.highest_price))
+#                     lowest_price_list.append(float(item.lowest_price))
+#                     closing_price_list.append(float(item.closing_price))
+#                 highest_array = np.array(highest_price_list)
+#                 lowest_array = np.array(lowest_price_list)
+#                 closing_array = np.array(closing_price_list)
+#                 # calculate TR, +DM, -DM for each trading date
+#                 SMOOTHING_FACTOR=14
+#                 try:
+#                     pdi14_array, ndi14_array, adx_array = calc_di_adx(highest_array, lowest_array, closing_array, SMOOTHING_FACTOR)
+#                     for j, item in enumerate(items[SMOOTHING_FACTOR+SMOOTHING_FACTOR-1:]):
+#                         tts = item.strategy
+#                         tts.pdi14 = pdi14_array[j]
+#                         tts.ndi14 = ndi14_array[j]
+#                         tts.adx = adx_array[j]
+#                         tts.save()
+#                 except:
+#                     logger.warning("Error when calculating average directional index with for stock pk= %s" % stock.id)
+#                     continue
+#                 
+#         transaction.commit()
+#         job.success()
+#     except: 
+#         logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+#         transaction.rollback()
+#         job.failed()
+#         raise
+#     finally:
+#         job.save()
+#         transaction.commit()
+#         transaction.set_autocommit(True)
+        
 def twse_manage_stock_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
@@ -851,7 +1051,7 @@ def twse_update_etf_stock_info_job():
     finally:
         job.save()
 #
-def twse_daily_trading_job(qdate=None):
+def twse_daily_trading_job(qdate=None, process_stock_only=False):
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
@@ -866,7 +1066,7 @@ def twse_daily_trading_job(qdate=None):
             raise Exception(job.error_message)
         if _get_day_trading(qdate_str):
             # call processing here
-            if _process_day_trading(qdate_str):
+            if _process_day_trading(qdate_str, process_stock_only):
                 Twse_Trading_Processed.objects.create(trading_date=qdate)
             else:
                 job.error_message = 'Trading data for date %s have problems when processing.' % qdate_str
@@ -923,7 +1123,7 @@ def _get_day_trading(qdate_str):
         logger.info("There are %s trading records in file" % (datarow_count - 1))
         return True
     
-def _process_day_trading(qdate_str):
+def _process_day_trading(qdate_str, process_stock_only=False):
     logger.info("processing twse trading data...")
     filename = "%s/trading_%s_datarow" % (TWSE_DOWNLOAD_1, re.sub('/', '', qdate_str))
     trading_items_to_save = []
@@ -940,6 +1140,7 @@ def _process_day_trading(qdate_str):
                 dt_data = td_element.string.strip()
                 if i == 0:
                     if check_if_warrant_item(dt_data):
+                        if process_stock_only: break
                         warrant_item, created = Warrant_Item.objects.get_or_create(symbol=dt_data)
                         dt_item = Twse_Trading_Warrant()
                         trading_warrant_items_to_save.append(dt_item)
@@ -982,7 +1183,7 @@ def _process_day_trading(qdate_str):
     logger.info("There are %s trading records processed ( %s warrant items, %s stock items)" % (record_stored, count1, count2))
     return True
 #
-def twse_daily_summary_price_job(qdate=None):
+def twse_daily_summary_price_job(qdate=None, process_stock_only=False):
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
@@ -1003,7 +1204,7 @@ def twse_daily_summary_price_job(qdate=None):
         else:
             if _get_summary_and_price(qdate_str):
                 # processing 
-                if (_process_price(qdate_str) and 
+                if (_process_price(qdate_str, process_stock_only) and 
                 _process_index(qdate_str) and 
                 _process_tri_index(qdate_str) and 
                 _process_summary(qdate_str) and 
@@ -1107,7 +1308,7 @@ def _get_summary_and_price(qdate_str):
         logger.info("Finish downloading summary and price records")
         return True
     
-def _process_price(qdate_str):
+def _process_price(qdate_str, process_stock_only=False):
     logger.info("processing twse price data...")
     filename = "%s/price_%s_datarow" % (TWSE_DOWNLOAD_0, re.sub('/', '', qdate_str))
     with codecs.open(filename, 'r', encoding="utf8") as fd:
@@ -1117,14 +1318,20 @@ def _process_price(qdate_str):
         record_stored = 0
         stock_count = 0
         warrant_count = 0
+        strategy_objects_to_save = []
         # skip two rows
         for row in rows[2:]:
-            i = 0
             up_or_down = 0
             dt_item = None
+            created=False
             symbol = None
-            for td_element in row.find_all('td', recursive=False):
-                dt_data = td_element.string.strip()
+            for i, td_element in enumerate(row.find_all('td', recursive=False)):
+                if td_element.string == None:
+                    # td_element contains no text or ontains more than 1 child tags
+                    # in any case skip processing it. 
+                    continue
+                else:
+                    dt_data = td_element.string.strip()
                 if i == 0:                                        
                     symbol = dt_data
                 elif i == 2:
@@ -1134,6 +1341,7 @@ def _process_price(qdate_str):
                     if trade_volume == 0 : break
                     # create model objects
                     if check_if_warrant_item(symbol):
+                        if process_stock_only: break
                         warrant_item, created = Warrant_Item.objects.get_or_create(symbol=symbol)
                         dt_item, created = Twse_Trading_Warrant.objects.get_or_create(warrant_symbol=warrant_item, trading_date=dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d'))
                         warrant_count += 1
@@ -1182,10 +1390,25 @@ def _process_price(qdate_str):
                     temp_data = dt_data.replace(',', '')
                     if is_float(temp_data): 
                         dt_item.last_best_ask_volume = float(temp_data)              
-                i += 1
+
             if dt_item: 
+                #remove the item if closing_price is 0 
+                #-->means only has transactions of trade volume less than 1000.
+                if dt_item.closing_price==0:
+                    dt_item.delete()
+                    logger.info("Trading item of symbol %s is removed because there is no closing_price info" % symbol)
+                    continue                   
                 dt_item.save()
+                # create a Twse_Trading_Strategy object if item is type Twse_Trading
+                if dt_item.__class__.__name__ == "Twse_Trading":
+                    tts = Twse_Trading_Strategy()
+                    tts.trading = dt_item
+                    tts.trading_date = dt_item.trading_date
+                    tts.stock_symbol_id = dt_item.stock_symbol_id
+                    strategy_objects_to_save.append(tts)     
+#         
                 record_stored += 1
+        if len(strategy_objects_to_save) > 0 : Twse_Trading_Strategy.objects.bulk_create(strategy_objects_to_save)
         logger.info("There are %s price records processed ( %s warrant items, %s stock items)" % (record_stored, warrant_count, stock_count))
     return True
        

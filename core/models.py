@@ -192,6 +192,13 @@ class TwseTradingMixin(object):
         return self.filter(trading_date=trading_date, stock_symbol=symbol)
     def by_date_and_symbol_id(self, trading_date, symbol_id):
         return self.filter(trading_date=trading_date, stock_symbol_id=symbol_id)
+    
+    def lte_date(self, target_date):
+        # used together with by_symbol() or RelatedManager 'twse_trading_list'
+        return self.filter(trading_date__lte=target_date)
+    def get_missing_avg(self):
+        # used together with by_symbol() or RelatedManager 'twse_trading_list'
+        return self.filter(week_avg__isnull=True)
         
 class TwseTradingQuerySet(QuerySet, TwseTradingMixin):
     pass
@@ -205,7 +212,31 @@ class TwseTradingManager(models.Manager, TwseTradingMixin):
             return self.filter(Q(stock_symbol__isnull=False), Q(hedge_buy__gt=0) | Q(hedge_sell__gt=0)).distinct().values('stock_symbol__symbol', 'stock_symbol__type_code')
         else:
             return self.filter(Q(stock_symbol__isnull=False), Q(hedge_buy__gt=0) | Q(hedge_sell__gt=0)).distinct().values('stock_symbol__symbol')
+    
+    def ohlc_between_dates(self, start_date, end_date, date_as_num=False):
+        # return list of tuples containing d, open, high, low, close, volume
+        entries = self.filter(trading_date__gte=start_date, trading_date__lte=end_date)
+        if date_as_num:
+            result = [(date2num(entry.trading_date), 
+                   float(entry.opening_price), 
+                   float(entry.highest_price), 
+                   float(entry.lowest_price), 
+                   float(entry.closing_price), 
+                   float(entry.trade_volume)) for entry in entries]
+        else:
+            result = [(entry.trading_date, 
+                   float(entry.opening_price), 
+                   float(entry.highest_price), 
+                   float(entry.lowest_price), 
+                   float(entry.closing_price), 
+                   float(entry.trade_volume)) for entry in entries]
+        return result
 
+    def price_lte_date(self, target_date):
+        # used together with by_symbol() or RelatedManager 'twse_trading_list'
+        return self.lte_date(target_date).values_list('closing_price', flat=True)
+    
+    
 class Twse_Trading(Model):
     stock_symbol = models.ForeignKey("core.Stock_Item", null=True, related_name="twse_trading_list", verbose_name=_('stock_symbol'))
     total_diff = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name=_('total_diff')) 
@@ -242,18 +273,36 @@ class Twse_Trading(Model):
     quarter_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('quarter_avg'))
     half_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('half_avg'))
     year_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('year_avg'))
-    day_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('day_k'))
-    day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('day_d'))
-    week_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('week_k'))
-    week_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('week_d'))
-    month_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('month_k'))
-    month_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('month_d'))
-#
+
     objects = TwseTradingManager() 
 #
     class Meta:
         unique_together = ("stock_symbol", "trading_date")
 
+class TwseTradingStrategyMixin(object): 
+    pass
+class TwseTradingStrategyQuerySet(QuerySet, TwseTradingStrategyMixin):
+    pass
+
+class TwseTradingStrategyManager(models.Manager, TwseTradingStrategyMixin):
+    def get_queryset(self):
+        return TwseTradingStrategyQuerySet(self.model, using=self._db)
+    
+class Twse_Trading_Strategy(Model):
+    trading = models.OneToOneField(Twse_Trading, primary_key=True, related_name="strategy")
+    stock_symbol = models.ForeignKey("core.Stock_Item", null=False, related_name="twse_trading_so_list", verbose_name=_('stock_symbol'))
+    trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
+    fourteen_day_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('fourteen_day_k'))
+    fourteen_day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('fourteen_day_d'))
+    seventy_day_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('seventy_day_k'))
+    seventy_day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('seventy_day_d'))
+    pdi14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('pdi14'))
+    ndi14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('ndi14'))
+    adx = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('adx'))
+#   
+#   
+    objects = TwseTradingStrategyManager() 
+    
 class TwseTradingWarrantMixin(object):
     def by_date(self, trading_date):
         return self.filter(trading_date=trading_date)
@@ -509,12 +558,10 @@ class TwseIndexStatsManager(models.Manager, TwseIndexStatsMixin):
                    float(entry.trade_value)) for entry in entries]
         return result
     
-    def get_dates_for_missing_avg(self):
-        return self.filter(week_avg__isnull=True).values_list('trading_date', flat=True)
+#     def get_dates_for_missing_avg(self):
+#         return self.filter(week_avg__isnull=True).values_list('trading_date', flat=True)
     def price_lte_date(self, target_date):
         return self.lte_date(target_date).values_list('closing_price', flat=True)
-#     def get_closing_prices(self):
-#         return self.all().order_by('trading_date').values_list('trading_date','closing_price')
     
 class Twse_Index_Stats(Model):
     trading_date = models.DateField(auto_now_add=False, null=False, unique=True, verbose_name=_('trading_date')) 
