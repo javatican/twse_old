@@ -296,6 +296,10 @@ class Twse_Trading_Strategy(Model):
     fourteen_day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('fourteen_day_d'))
     seventy_day_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('seventy_day_k'))
     seventy_day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('seventy_day_d'))
+    tr14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('tr14'))
+    pdm14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('pdm14'))
+    ndm14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('ndm14'))
+    #
     pdi14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('pdi14'))
     ndi14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('ndi14'))
     adx = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('adx'))
