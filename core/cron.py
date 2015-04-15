@@ -1451,11 +1451,16 @@ def _process_index(qdate_str):
         logger.info("There are %s index records in file." % len(rows))
         record_stored = 0
         for row in rows:
-            i = 0
             up_or_down = 0
             dt_item = None
-            for td_element in row.find_all('td', recursive=False):
-                dt_data = td_element.string.strip()
+            for i, td_element in enumerate(row.find_all('td', recursive=False)):
+                if td_element.string == None:
+                    # td_element contains no text or ontains more than 1 child tags
+                    # in any case skip processing it. 
+                    continue
+                else:
+                    dt_data = td_element.string.strip()
+            
                 if i == 0:
                     # create model objects
                     index_item, created = Index_Item.objects.get_or_create(name=dt_data)
@@ -1463,7 +1468,9 @@ def _process_index(qdate_str):
                     dt_item.twse_index = index_item
                     dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')             
                 elif i == 1: 
-                    dt_item.closing_index = float(dt_data.replace(',', ''))                
+                    temp_data = dt_data.replace(',', '')
+                    if is_float(temp_data): 
+                        dt_item.closing_index = float(temp_data)                
                 elif i == 2:
                     up_or_down = check_up_or_down(dt_data) 
                 elif i == 3:
@@ -1473,8 +1480,7 @@ def _process_index(qdate_str):
                 elif i == 4:
                     temp_data = dt_data.replace(',', '')
                     if is_float(temp_data): 
-                        dt_item.change_in_percentage = float(temp_data)                             
-                i += 1
+                        dt_item.change_in_percentage = float(temp_data)
             if dt_item: 
                 dt_item.save()
                 record_stored += 1
@@ -1490,19 +1496,25 @@ def _process_tri_index(qdate_str):
         logger.info("There are %s tri index records in file." % len(rows))
         record_stored = 0
         for row in rows:
-            i = 0
             up_or_down = 0
             dt_item = None
-            for td_element in row.find_all('td', recursive=False):
-                dt_data = td_element.string.strip()
+            for i, td_element in enumerate(row.find_all('td', recursive=False)):
+                if td_element.string == None:
+                    # td_element contains no text or ontains more than 1 child tags
+                    # in any case skip processing it. 
+                    continue
+                else:
+                    dt_data = td_element.string.strip()
                 if i == 0:
                     # create model objects
                     index_item, created = Index_Item.objects.get_or_create(name=dt_data, is_total_return_index=True)
                     dt_item = Index_Change_Info()
                     dt_item.twse_index = index_item
                     dt_item.trading_date = dateutil.convertToDate(qdate_str, date_format='%Y/%m/%d')  
-                elif i == 1:
-                    dt_item.closing_index = float(dt_data.replace(',', ''))                         
+                elif i == 1: 
+                    temp_data = dt_data.replace(',', '')
+                    if is_float(temp_data): 
+                        dt_item.closing_index = float(temp_data)                       
                 elif i == 2:
                     up_or_down = check_up_or_down(dt_data) 
                 elif i == 3:
@@ -1513,7 +1525,6 @@ def _process_tri_index(qdate_str):
                     temp_data = dt_data.replace(',', '')
                     if is_float(temp_data): 
                         dt_item.change_in_percentage = float(temp_data)                             
-                i += 1
             if dt_item: 
                 dt_item.save()
                 record_stored += 1

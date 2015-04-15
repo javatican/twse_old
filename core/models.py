@@ -214,6 +214,7 @@ class TwseTradingManager(models.Manager, TwseTradingMixin):
             return self.filter(Q(stock_symbol__isnull=False), Q(hedge_buy__gt=0) | Q(hedge_sell__gt=0)).distinct().values('stock_symbol__symbol')
     
     def ohlc_between_dates(self, start_date, end_date, date_as_num=False):
+        # this method should be used together with by_symbol() or RelatedManager 'twse_trading_list'
         # return list of tuples containing d, open, high, low, close, volume
         entries = self.filter(trading_date__gte=start_date, trading_date__lte=end_date)
         if date_as_num:
