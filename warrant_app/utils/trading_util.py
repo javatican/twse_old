@@ -49,15 +49,20 @@ def calc_stochastic_oscillator_for_stock(stock, trading_item_list=None, LOOK_BAC
                         
 def _calc_stochastic_oscillator(highest_array, lowest_array, closing_array, LOOK_BACK_PERIOD=14, K_SMOOTHING=3, D_MOVING_AVERAGE=3):
     item_count = closing_array.size
+    #print "item_count=%s" % item_count
     min_item_count = LOOK_BACK_PERIOD + K_SMOOTHING - 1 + D_MOVING_AVERAGE - 1
     if item_count < min_item_count: 
         raise Exception
     k_array = np.zeros(item_count - LOOK_BACK_PERIOD + 1)
     for j, item in enumerate(closing_array[LOOK_BACK_PERIOD - 1:]):
         highest_price = np.max(highest_array[j:LOOK_BACK_PERIOD + j])
+        #print "highest_price=%s" % highest_price
         lowest_price = np.min(lowest_array[j:LOOK_BACK_PERIOD + j])
+        #print "lowest_price=%s" % lowest_price
         if highest_price - lowest_price > 0:
             k_value = 100 * (item - lowest_price) / (highest_price - lowest_price)
+            #print "closing_price=%s" % item
+            #print "k_value=%s" % k_value
             k_array[j] = k_value
         else:
             print "highest_price=lowest_price @ %s" % lowest_price
@@ -312,3 +317,147 @@ def calc_di_adx_pairwise(highest_array, lowest_array, closing_array, previous_st
     
     return tr14_array, pdm14_array, ndm14_array, pdi14_array, ndi14_array, adx_array
     
+
+def pre_filtering_bull(data_array, LONG_K_LEVEL, ADX_LEVEL):
+    # Bull candidate target: long term bull but in consolidating lately
+    # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
+    # 2nd criteria: adx are below ADX_LEVEL(eg 15)
+    long_k=data_array[0]
+    adx=data_array[6]
+    for data in long_k:
+        if data<LONG_K_LEVEL: return False 
+    for data in adx:
+        if data>ADX_LEVEL: return False 
+    return True
+
+def pre_filtering_bear(data_array, LONG_K_LEVEL, ADX_LEVEL):
+    # Bear candidate target: long term bear but in consolidating lately
+    # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
+    # 2nd criteria: adx are below ADX_LEVEL(eg 15)
+    long_k=data_array[0]
+    adx=data_array[6]
+    for data in long_k:
+        if data>LONG_K_LEVEL: return False 
+    for data in adx:
+        if data>ADX_LEVEL: return False 
+    return True
+
+def breakout3_list_bull(data_array, SHORT_K_LEVEL):
+    # Bull breakout 3rd day target
+    # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
+    # 2nd criteria: for short(14-day) k's , the last 3 days' k are above SHORT_K_LEVEL(eg 80) and the others are below SHORT_K_LEVEL
+    # 3rd criteria: adx are below ADX_LEVEL(eg 15)
+    short_k=data_array[2]
+    if short_k[-1] < SHORT_K_LEVEL: return False
+    if short_k[-2] < SHORT_K_LEVEL: return False
+    if short_k[-3] < SHORT_K_LEVEL: return False
+    if short_k.size>3:
+        for data in short_k[:-3]:
+            if data >= SHORT_K_LEVEL: return False
+    return True
+
+def breakout3_list_bear(data_array, SHORT_K_LEVEL):
+    # Bear breakout 3rd day target
+    # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
+    # 2nd criteria: for short(14-day) k's , the last 3 days' k are below SHORT_K_LEVEL(eg 20) and the others are above SHORT_K_LEVEL
+    # 3rd criteria: adx are below ADX_LEVEL(eg 15) 
+    short_k=data_array[2]  
+    if short_k[-1] > SHORT_K_LEVEL: return False
+    if short_k[-2] > SHORT_K_LEVEL: return False
+    if short_k[-3] > SHORT_K_LEVEL: return False
+    if short_k.size>3:
+        for data in short_k[:-3]:
+            if data <= SHORT_K_LEVEL: return False 
+    return True
+
+def breakout2_list_bull(data_array, SHORT_K_LEVEL):
+    # Bull breakout 2nd day target
+    # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
+    # 2nd criteria: for short(14-day) k's , the last two days' k are above SHORT_K_LEVEL(eg 80) and the others are below SHORT_K_LEVEL
+    # 3rd criteria: adx are below ADX_LEVEL(eg 15)
+    short_k=data_array[2]
+    if short_k[-1] < SHORT_K_LEVEL: return False
+    if short_k[-2] < SHORT_K_LEVEL: return False
+    for data in short_k[:-2]:
+        if data >= SHORT_K_LEVEL: return False
+    return True
+
+def breakout2_list_bear(data_array, SHORT_K_LEVEL):
+    # Bear breakout 2nd day target
+    # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
+    # 2nd criteria: for short(14-day) k's , the last two days' k are below SHORT_K_LEVEL(eg 20) and the others are above SHORT_K_LEVEL
+    # 3rd criteria: adx are below ADX_LEVEL(eg 15) 
+    short_k=data_array[2]  
+    if short_k[-1] > SHORT_K_LEVEL: return False
+    if short_k[-2] > SHORT_K_LEVEL: return False
+    for data in short_k[:-2]:
+        if data <= SHORT_K_LEVEL: return False 
+    return True
+
+def breakout_list_bull(data_array, SHORT_K_LEVEL):
+    # Bull breakout target
+    # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
+    # 2nd criteria: for short(14-day) k's , the last k is above SHORT_K_LEVEL(eg 80) and the others are below SHORT_K_LEVEL
+    # 3rd criteria: adx are below ADX_LEVEL(eg 15)
+    short_k=data_array[2]
+    if short_k[-1] < SHORT_K_LEVEL: return False
+    for data in short_k[:-1]:
+        if data >= SHORT_K_LEVEL: return False
+    return True
+
+def breakout_list_bear(data_array, SHORT_K_LEVEL):
+    # Bear breakout target
+    # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
+    # 2nd criteria: for short(14-day) k's , the last k is below SHORT_K_LEVEL(eg 20) and the others are above SHORT_K_LEVEL
+    # 3rd criteria: adx are below ADX_LEVEL(eg 15) 
+    short_k=data_array[2]  
+    if short_k[-1] > SHORT_K_LEVEL: return False
+    for data in short_k[:-1]:
+        if data <= SHORT_K_LEVEL: return False 
+    return True
+
+def watch_list_bull(data_array, SHORT_K_LEVEL):
+    # Bull watch target
+    # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
+    # 2nd criteria: for short(14-day) k's, all are below  SHORT_K_LEVEL(eg 80) but the last k is between SHORT_K_LEVEL(eg 80) and SHORT_K_LEVEL-SHORT_K_WINDOW(eg 70)
+    # 3rd criteria: adx are below ADX_LEVEL(eg 15)
+    SHORT_K_WINDOW=10
+    short_k=data_array[2]
+    for data in short_k:
+        if data > SHORT_K_LEVEL: return False 
+    if short_k[-1] < SHORT_K_LEVEL-SHORT_K_WINDOW: return False
+    return True
+
+def watch_list_bear(data_array, SHORT_K_LEVEL):
+    # Bear watch target
+    # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
+    # 2nd criteria: for short(14-day) k's, all are above  SHORT_K_LEVEL(eg 20) but the last k is between SHORT_K_LEVEL(eg 20) and SHORT_K_LEVEL+SHORT_K_WINDOW(eg 30)
+    # 3rd criteria: adx are below ADX_LEVEL(eg 15)
+    SHORT_K_WINDOW=10
+    short_k=data_array[2]
+    for data in short_k:
+        if data < SHORT_K_LEVEL: return False 
+    if short_k[-1] > SHORT_K_LEVEL+SHORT_K_WINDOW: return False
+    return True
+
+def _is_incrementing(data_array):
+    # assuming input array is 1D
+    array_1=data_array[1:]
+    array_2=data_array[:-1]
+    diff=array_1-array_2
+    count = np.sum((diff>=0).astype(int))
+    if count != array_1.size: 
+        return False
+    else:
+        return True
+    
+def _is_decrementing(data_array):
+    # assuming input array is 1D
+    array_1=data_array[1:]
+    array_2=data_array[:-1]
+    diff=array_1-array_2
+    count = np.sum((diff<=0).astype(int))
+    if count != array_1.size: 
+        return False
+    else:
+        return True

@@ -109,7 +109,10 @@ class WarrantItemMixin(object):
     def expired_trading_list_not_set(self):
         today = datetime.datetime.now().date()
         return self.filter(last_trading_date__lt=today, trading_list__isnull=True)
-        
+    def call_list(self):
+        return self.filter(classification=_CALL)
+    def put_list(self):
+        return self.filter(classification=_PUT)
 class WarrantItemQuerySet(QuerySet, WarrantItemMixin):
     pass
 
@@ -505,6 +508,8 @@ class TwseTradingProcessedManager(models.Manager, TwseTradingProcessedMixin):
         return self.filter(trading_date=trading_date).exists()
     def get_dates(self):
         return self.all().order_by('trading_date').values_list('trading_date', flat=True)
+    def get_last_processed(self):
+        return self.all().order_by('-trading_date').values_list('trading_date', flat=True)[0]
     
 class Twse_Trading_Processed(Model):
     trading_date = models.DateField(null=False, unique=True, verbose_name=_('trading_date')) 
@@ -521,6 +526,8 @@ class TwseSummaryPriceProcessedManager(models.Manager, TwseSummaryPriceProcessed
         return TwseTradingProcessedQuerySet(self.model, using=self._db)
     def check_processed(self, trading_date):
         return self.filter(trading_date=trading_date).exists()
+    def get_last_processed(self):
+        return self.all().order_by('-trading_date').values_list('trading_date', flat=True)[0]
 
 class Twse_Summary_Price_Processed(Model):
     trading_date = models.DateField(null=False, unique=True, verbose_name=_('trading_date')) 

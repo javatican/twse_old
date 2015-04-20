@@ -16,6 +16,9 @@ def string_to_date(date_string, date_format='%Y/%m/%d'):
 def is_third_wednesday(d): 
     return d.weekday() == 2 and 14 < d.day < 22
 
+def roc_year(western_year):
+    return western_year-1911
+    
 def roc_year_to_western(roc_date_string):
     #roc date format : year/month/day
     #first split the string into year, month, day

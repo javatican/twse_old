@@ -32,7 +32,7 @@ from warrant_app.utils.black_scholes import option_price_implied_volatility_call
     option_price_delta_call_black_scholes, option_price_delta_put_black_scholes, \
     option_price_call_black_scholes, option_price_put_black_scholes
 from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year, \
-    convertToDate, is_third_wednesday
+    convertToDate, is_third_wednesday, roc_year
 from warrant_app.utils.logutil import log_message
 from warrant_app.utils.stringutil import is_float
 from warrant_app.utils.trading_util import moving_avg, \
@@ -60,7 +60,7 @@ logger = logging.getLogger('warrant_app.cronjob')
 #         items_to_create.append(instance)
 #     Twse_Trading_Warrant.objects.bulk_create(items_to_create)
 #     
-def download_twse_index_stats_job():
+def download_twse_index_stats_job(year=None, month_list=None):
     # this job is used to download twse index open,high, low, close index
     # as well as create Trading_Date entry
     _CREATE_TRADING_DATE_OBJECT = True
@@ -72,14 +72,21 @@ def download_twse_index_stats_job():
         serviceUrl = 'http://www.twse.com.tw/ch/trading/indices/MI_5MINS_HIST/MI_5MINS_HIST.php'
         if _CHECK_LAST_TRADING_DATE:
             last_trading_date = Trading_Date.objects.get_last_trading_date()
+        today = datetime.date.today()
+        if not year:
+            #default: this year
+            year = today.year
+        if not month_list:
+            month_list = []
+            month_list.append(today.month)
+            
         # the year parameter is in ROC year , month with 2 digits
-        year = 104
-        for n in range(4, 5):
+        for n in month_list:
             if n < 10:
                 month = "0%s" % n
             else:
                 month = n
-            parameters = {'myear': year , 'mmon': month}
+            parameters = {'myear': roc_year(year) , 'mmon': month}
             try:        
                 httpResponse = requests.post(serviceUrl, params=parameters, stream=True)
                 httpResponse.encoding = "big5"
@@ -140,7 +147,7 @@ def download_twse_index_stats_job():
     finally:
         job.save()
 
-def download_twse_index_stats2_job():
+def download_twse_index_stats2_job(year=None, month_list=None):
     # this job is used to update Twse_Index_Stats's 
     # trade_volume, trade_transaction, trade_value data.
     # Need to be run after download_twse_index_stats_job
@@ -148,9 +155,16 @@ def download_twse_index_stats2_job():
     job = Cron_Job_Log()
     job.title = download_twse_index_stats2_job.__name__ 
     try:  
-        # the year parameter is in Western year , month with 2 digits  
-        year = 2015
-        for n in range(4, 5):
+        today = datetime.date.today()
+        if not year:
+            #default: this year
+            year = today.year
+        if not month_list:
+            month_list = []
+            month_list.append(today.month)
+            
+        # the year parameter is in ROC year , month with 2 digits
+        for n in month_list:
             if n < 10:
                 month = "0%s" % n
             else:
@@ -262,7 +276,7 @@ def twse_stock_price_avg_calc_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
     job.title = twse_stock_price_avg_calc_job.__name__ 
-    UPDATE_MODE = False 
+    UPDATE_MODE = True 
     try:
         if UPDATE_MODE:
             stock_items = Stock_Item.objects.all()
@@ -334,8 +348,8 @@ def twse_stock_calc_stoch_osci_adx_job():
     UPDATE_MODE = True 
     try:
         if UPDATE_MODE:
-            #stock_items = Stock_Item.objects.all()
-            stock_items = Stock_Item.objects.filter(symbol='2312')
+            stock_items = Stock_Item.objects.all()
+            #stock_items = Stock_Item.objects.filter(symbol='3008')
             for stock in stock_items:
                 # calculate 14-day stochastic oscillator
                 # parameters
@@ -343,8 +357,11 @@ def twse_stock_calc_stoch_osci_adx_job():
                 K_SMOOTHING = 3
                 D_MOVING_AVERAGE = 3
                 # first get the last trading_date which has the fourteen_day_k calculated
-                last_not_null = stock.twse_trading_list.filter(strategy__fourteen_day_k__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]
-                if last_not_null:
+                is_exist = stock.twse_trading_list.filter(strategy__fourteen_day_k__isnull=False).exists()
+                if is_exist: 
+                    last_not_null = stock.twse_trading_list.filter(strategy__fourteen_day_k__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]                
+                    
+                    #print "last_not_null=%s" % last_not_null
                     # get the starting date after which their trading data are needed to update stoch_osci values for new trading data
                     n = LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3
                     start_date = stock.twse_trading_list.filter(trading_date__lte=last_not_null).values_list('trading_date', flat=True).order_by('-trading_date')[n - 1]
@@ -372,8 +389,9 @@ def twse_stock_calc_stoch_osci_adx_job():
                 LOOK_BACK_PERIOD = 70
                 K_SMOOTHING = 3
                 D_MOVING_AVERAGE = 3
-                last_not_null = stock.twse_trading_list.filter(strategy__seventy_day_k__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]
-                if last_not_null:
+                is_exist = stock.twse_trading_list.filter(strategy__seventy_day_k__isnull=False).exists()
+                if is_exist: 
+                    last_not_null = stock.twse_trading_list.filter(strategy__seventy_day_k__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]
                     n = LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3
                     start_date = stock.twse_trading_list.filter(trading_date__lte=last_not_null).values_list('trading_date', flat=True).order_by('-trading_date')[n - 1]
                     items = stock.twse_trading_list.filter(trading_date__gte=start_date).select_related('strategy').order_by('trading_date')     
@@ -393,8 +411,9 @@ def twse_stock_calc_stoch_osci_adx_job():
                     item.save()
                 #calculate ADX
                 SMOOTHING_FACTOR = 14  
-                last_not_null = stock.twse_trading_list.filter(strategy__adx__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]
-                if last_not_null:
+                is_exist = stock.twse_trading_list.filter(strategy__adx__isnull=False).exists()
+                if is_exist: 
+                    last_not_null = stock.twse_trading_list.filter(strategy__adx__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]
                     start_date=last_not_null
                     items = stock.twse_trading_list.filter(trading_date__gte=start_date).select_related('strategy').order_by('trading_date')   
                     try:                    

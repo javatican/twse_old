@@ -11,26 +11,34 @@ import matplotlib
 from matplotlib.finance import candlestick_ohlc
 import os
 
-from core.models import Stock_Item
+from core.models import Stock_Item, Trading_Date
 import numpy as np
 from warrant_app.utils.dateutil import DateEncoder, convertToDate
 
 
+_USE_LATEST_DATA=True
 _FORCE_REGEN = False
 _INTERACTIVE = True
 _SHOW_LEGEND=False
 # _INTERACTIVE=False
 #***preparing data
-stock_symbol='2408'
-start_date = '20141001'
-end_date = '20150401'
+stock_symbol='6271'
+if _USE_LATEST_DATA:
+    date_list = Trading_Date.objects.all().values_list('trading_date', flat=True).order_by('-trading_date')[:120]
+    start_date=date_list[len(date_list)-1]
+    end_date=date_list[0]
+else:
+    start_date = '20141001'
+    end_date = '20150401'
+    start_date=convertToDate(start_date)
+    end_date=convertToDate(end_date)
 fname = "ipython/stock_strategy/%s_stoch_osci_%s_%s" % (stock_symbol, start_date, end_date)
 filename = '%s.txt' % fname
 trading_date_list = None
 if _FORCE_REGEN or not os.path.isfile(filename):
     stock=Stock_Item.objects.get_by_symbol(stock_symbol)
-    entries = stock.twse_trading_list.filter(trading_date__gte=convertToDate(start_date), 
-                                             trading_date__lte=convertToDate(end_date)).select_related('strategy').order_by('trading_date') 
+    entries = stock.twse_trading_list.filter(trading_date__gte=start_date, 
+                                             trading_date__lte=end_date).select_related('strategy').order_by('trading_date') 
     price_data=[]
     long_kd_data=[]
     short_kd_data=[]    
