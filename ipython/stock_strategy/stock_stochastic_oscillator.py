@@ -22,23 +22,28 @@ _INTERACTIVE = True
 _SHOW_LEGEND=False
 # _INTERACTIVE=False
 #***preparing data
-stock_symbol='6271'
+stock_symbol='3008'
 if _USE_LATEST_DATA:
     date_list = Trading_Date.objects.all().values_list('trading_date', flat=True).order_by('-trading_date')[:120]
     start_date=date_list[len(date_list)-1]
     end_date=date_list[0]
 else:
-    start_date = '20141001'
     end_date = '20150401'
-    start_date=convertToDate(start_date)
     end_date=convertToDate(end_date)
-fname = "ipython/stock_strategy/%s_stoch_osci_%s_%s" % (stock_symbol, start_date, end_date)
+    date_list = Trading_Date.objects.filter(trading_date__lte=end_date).values_list('trading_date', flat=True).order_by('-trading_date')[:120]
+    start_date=date_list[len(date_list)-1]
+    end_date=date_list[0]
+directory="ipython/stock_strategy/%s" % end_date.strftime("%Y%m%d")
+if not os.path.exists(directory):
+    os.makedirs(directory)
+fname = "%s/%s_stoch_osci_%s_%s" % (directory, stock_symbol, start_date, end_date)
 filename = '%s.txt' % fname
 trading_date_list = None
 if _FORCE_REGEN or not os.path.isfile(filename):
     stock=Stock_Item.objects.get_by_symbol(stock_symbol)
     entries = stock.twse_trading_list.filter(trading_date__gte=start_date, 
-                                             trading_date__lte=end_date).select_related('strategy').order_by('trading_date') 
+                                             trading_date__lte=end_date,
+                                             strategy__seventy_day_k__isnull=False).select_related('strategy').order_by('trading_date') 
     price_data=[]
     long_kd_data=[]
     short_kd_data=[]    

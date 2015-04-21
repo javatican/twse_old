@@ -60,9 +60,9 @@ for stock in stock_items:
     data_list = [(float(entry.strategy.seventy_day_k),
       float(entry.strategy.seventy_day_d),
       float(entry.strategy.fourteen_day_k),
-      float(entry.strategy.fourteen_day_d),
-#      float(entry.strategy.pdi14),
-#      float(entry.strategy.ndi14), 
+    float(entry.strategy.fourteen_day_d),
+    float(entry.strategy.pdi14),
+    float(entry.strategy.ndi14), 
       float(entry.strategy.adx)) for entry in trading_entries]
     data_array=np.asarray(data_list)
     data_array_t= data_array.T
