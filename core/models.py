@@ -291,7 +291,7 @@ class TwseTradingStrategyQuerySet(QuerySet, TwseTradingStrategyMixin):
 class TwseTradingStrategyManager(models.Manager, TwseTradingStrategyMixin):
     def get_queryset(self):
         return TwseTradingStrategyQuerySet(self.model, using=self._db)
-    
+
 class Twse_Trading_Strategy(Model):
     trading = models.OneToOneField(Twse_Trading, primary_key=True, related_name="strategy")
     stock_symbol = models.ForeignKey("core.Stock_Item", null=False, related_name="twse_trading_so_list", verbose_name=_('stock_symbol'))

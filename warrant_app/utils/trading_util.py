@@ -44,7 +44,7 @@ def calc_stochastic_oscillator_for_stock(stock, trading_item_list=None, LOOK_BAC
     # 2. the size of k_array is 'LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3' shorter than that of items
     for j, item in enumerate(items[LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3:]):
         tts = item.strategy
-        if LOOK_BACK_PERIOD==14:
+        if LOOK_BACK_PERIOD == 14:
             tts.fourteen_day_k = k_array[j]
             tts.fourteen_day_d = d_array[j]
         else:
@@ -55,20 +55,20 @@ def calc_stochastic_oscillator_for_stock(stock, trading_item_list=None, LOOK_BAC
                         
 def _calc_stochastic_oscillator(highest_array, lowest_array, closing_array, LOOK_BACK_PERIOD=14, K_SMOOTHING=3, D_MOVING_AVERAGE=3):
     item_count = closing_array.size
-    #print "item_count=%s" % item_count
+    # print "item_count=%s" % item_count
     min_item_count = LOOK_BACK_PERIOD + K_SMOOTHING - 1 + D_MOVING_AVERAGE - 1
     if item_count < min_item_count: 
         raise Exception
     k_array = np.zeros(item_count - LOOK_BACK_PERIOD + 1)
     for j, item in enumerate(closing_array[LOOK_BACK_PERIOD - 1:]):
         highest_price = np.max(highest_array[j:LOOK_BACK_PERIOD + j])
-        #print "highest_price=%s" % highest_price
+        # print "highest_price=%s" % highest_price
         lowest_price = np.min(lowest_array[j:LOOK_BACK_PERIOD + j])
-        #print "lowest_price=%s" % lowest_price
+        # print "lowest_price=%s" % lowest_price
         if highest_price - lowest_price > 0:
             k_value = 100 * (item - lowest_price) / (highest_price - lowest_price)
-            #print "closing_price=%s" % item
-            #print "k_value=%s" % k_value
+            # print "closing_price=%s" % item
+            # print "k_value=%s" % k_value
             k_array[j] = k_value
         else:
             print "highest_price=lowest_price @ %s" % lowest_price
@@ -137,7 +137,7 @@ def update_di_adx_for_stock(stock, trading_item_list=None, SMOOTHING_FACTOR=14):
     highest_array = np.array(highest_price_list)
     lowest_array = np.array(lowest_price_list)
     closing_array = np.array(closing_price_list)
-    previous_strategy=items[0].strategy
+    previous_strategy = items[0].strategy
     tr14_array, pdm14_array, ndm14_array, pdi14_array, ndi14_array, adx_array = calc_di_adx_pairwise(highest_array, lowest_array, closing_array, previous_strategy, SMOOTHING_FACTOR=SMOOTHING_FACTOR)
 #
     for j, item in enumerate(items[1:]):
@@ -250,15 +250,15 @@ def calc_di_adx_pairwise(highest_array, lowest_array, closing_array, previous_st
     min_item_count = 2
     if item_count < min_item_count: 
         raise Exception
-    tr_array = np.zeros(item_count-1)
-    pdm_array = np.zeros(item_count-1)
-    ndm_array = np.zeros(item_count-1)
-    tr14_array = np.zeros(item_count-1)
-    pdm14_array = np.zeros(item_count-1)
-    ndm14_array = np.zeros(item_count-1)  
-    adx_array = np.zeros(item_count-1)
+    tr_array = np.zeros(item_count - 1)
+    pdm_array = np.zeros(item_count - 1)
+    ndm_array = np.zeros(item_count - 1)
+    tr14_array = np.zeros(item_count - 1)
+    pdm14_array = np.zeros(item_count - 1)
+    ndm14_array = np.zeros(item_count - 1)  
+    adx_array = np.zeros(item_count - 1)
     #
-    for i in np.arange(1,item_count):
+    for i in np.arange(1, item_count):
         # Calculate True Range
         # TR is defined as the greatest of the following:
         # Method 1: Current High less the current Low
@@ -288,7 +288,7 @@ def calc_di_adx_pairwise(highest_array, lowest_array, closing_array, previous_st
         ndm_array[i - 1] = ndm
     # Smooth TR,+DM,-DM using the Wilder's smoothing techniques. 
     # Subsequent Values = Prior TR14 - (Prior TR14/14) + Current TR1
-    for i in np.arange(item_count-1):
+    for i in np.arange(item_count - 1):
         if i == 0:
             tr14 = wilder_smoothing(float(previous_strategy.tr14), tr_array[i])
             pdm14 = wilder_smoothing(float(previous_strategy.pdm14), pdm_array[i])
@@ -314,7 +314,7 @@ def calc_di_adx_pairwise(highest_array, lowest_array, closing_array, previous_st
     # The first ADX value is simply a 14-day average of DX. 
     # Subsequent ADX values are smoothed by multiplying the previous 14-day ADX value by 13, 
     # adding the most recent DX value and dividing this total by 14.
-    for i in np.arange(item_count-1):
+    for i in np.arange(item_count - 1):
         if i == 0:
             adx = wilder_smoothing(float(previous_strategy.adx), dx_array[i], use_sum=False)
         else:
@@ -328,24 +328,24 @@ def pre_filtering_bull(data_array, LONG_K_LEVEL, ADX_LEVEL):
     # Bull candidate target: long term bull but in consolidating lately
     # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
     # 2nd criteria: adx are below ADX_LEVEL(eg 15)
-    long_k=data_array[0]
-    adx=data_array[6]
+    long_k = data_array[0]
+    adx = data_array[6]
     for data in long_k:
-        if data<LONG_K_LEVEL: return False 
+        if data < LONG_K_LEVEL: return False 
     for data in adx:
-        if data>ADX_LEVEL: return False 
+        if data > ADX_LEVEL: return False 
     return True
 
 def pre_filtering_bear(data_array, LONG_K_LEVEL, ADX_LEVEL):
     # Bear candidate target: long term bear but in consolidating lately
     # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
     # 2nd criteria: adx are below ADX_LEVEL(eg 15)
-    long_k=data_array[0]
-    adx=data_array[6]
+    long_k = data_array[0]
+    adx = data_array[6]
     for data in long_k:
-        if data>LONG_K_LEVEL: return False 
+        if data > LONG_K_LEVEL: return False 
     for data in adx:
-        if data>ADX_LEVEL: return False 
+        if data > ADX_LEVEL: return False 
     return True
 
 def breakout3_list_bull(data_array, SHORT_K_LEVEL):
@@ -353,11 +353,11 @@ def breakout3_list_bull(data_array, SHORT_K_LEVEL):
     # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
     # 2nd criteria: for short(14-day) k's , the last 3 days' k are above SHORT_K_LEVEL(eg 80) and the others are below SHORT_K_LEVEL
     # 3rd criteria: adx are below ADX_LEVEL(eg 15)
-    short_k=data_array[2]
+    short_k = data_array[2]
     if short_k[-1] < SHORT_K_LEVEL: return False
     if short_k[-2] < SHORT_K_LEVEL: return False
     if short_k[-3] < SHORT_K_LEVEL: return False
-    if short_k.size>3:
+    if short_k.size > 3:
         for data in short_k[:-3]:
             if data >= SHORT_K_LEVEL: return False
     return True
@@ -367,11 +367,11 @@ def breakout3_list_bear(data_array, SHORT_K_LEVEL):
     # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
     # 2nd criteria: for short(14-day) k's , the last 3 days' k are below SHORT_K_LEVEL(eg 20) and the others are above SHORT_K_LEVEL
     # 3rd criteria: adx are below ADX_LEVEL(eg 15) 
-    short_k=data_array[2]  
+    short_k = data_array[2]  
     if short_k[-1] > SHORT_K_LEVEL: return False
     if short_k[-2] > SHORT_K_LEVEL: return False
     if short_k[-3] > SHORT_K_LEVEL: return False
-    if short_k.size>3:
+    if short_k.size > 3:
         for data in short_k[:-3]:
             if data <= SHORT_K_LEVEL: return False 
     return True
@@ -381,7 +381,7 @@ def breakout2_list_bull(data_array, SHORT_K_LEVEL):
     # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
     # 2nd criteria: for short(14-day) k's , the last two days' k are above SHORT_K_LEVEL(eg 80) and the others are below SHORT_K_LEVEL
     # 3rd criteria: adx are below ADX_LEVEL(eg 15)
-    short_k=data_array[2]
+    short_k = data_array[2]
     if short_k[-1] < SHORT_K_LEVEL: return False
     if short_k[-2] < SHORT_K_LEVEL: return False
     for data in short_k[:-2]:
@@ -393,7 +393,7 @@ def breakout2_list_bear(data_array, SHORT_K_LEVEL):
     # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
     # 2nd criteria: for short(14-day) k's , the last two days' k are below SHORT_K_LEVEL(eg 20) and the others are above SHORT_K_LEVEL
     # 3rd criteria: adx are below ADX_LEVEL(eg 15) 
-    short_k=data_array[2]  
+    short_k = data_array[2]  
     if short_k[-1] > SHORT_K_LEVEL: return False
     if short_k[-2] > SHORT_K_LEVEL: return False
     for data in short_k[:-2]:
@@ -405,7 +405,7 @@ def breakout_list_bull(data_array, SHORT_K_LEVEL):
     # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
     # 2nd criteria: for short(14-day) k's , the last k is above SHORT_K_LEVEL(eg 80) and the others are below SHORT_K_LEVEL
     # 3rd criteria: adx are below ADX_LEVEL(eg 15)
-    short_k=data_array[2]
+    short_k = data_array[2]
     if short_k[-1] < SHORT_K_LEVEL: return False
     for data in short_k[:-1]:
         if data >= SHORT_K_LEVEL: return False
@@ -416,7 +416,7 @@ def breakout_list_bear(data_array, SHORT_K_LEVEL):
     # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
     # 2nd criteria: for short(14-day) k's , the last k is below SHORT_K_LEVEL(eg 20) and the others are above SHORT_K_LEVEL
     # 3rd criteria: adx are below ADX_LEVEL(eg 15) 
-    short_k=data_array[2]  
+    short_k = data_array[2]  
     if short_k[-1] > SHORT_K_LEVEL: return False
     for data in short_k[:-1]:
         if data <= SHORT_K_LEVEL: return False 
@@ -427,31 +427,60 @@ def watch_list_bull(data_array, SHORT_K_LEVEL):
     # 1st criteria: long(70-day) k's are above LONG_K_LEVEL(eg 50)
     # 2nd criteria: for short(14-day) k's, all are below  SHORT_K_LEVEL(eg 80) but the last k is between SHORT_K_LEVEL(eg 80) and SHORT_K_LEVEL-SHORT_K_WINDOW(eg 70)
     # 3rd criteria: adx are below ADX_LEVEL(eg 15)
-    SHORT_K_WINDOW=10
-    short_k=data_array[2]
+    SHORT_K_WINDOW = 10
+    short_k = data_array[2]
     for data in short_k:
         if data > SHORT_K_LEVEL: return False 
-    if short_k[-1] < SHORT_K_LEVEL-SHORT_K_WINDOW: return False
+    if short_k[-1] < SHORT_K_LEVEL - SHORT_K_WINDOW: return False
     return True
 
+def predict_breakout_price(stock, SHORT_K_LEVEL):
+    LOOK_BACK_PERIOD = 14
+    trading_entries = stock.twse_trading_list.all().order_by('-trading_date')[:LOOK_BACK_PERIOD + 1]
+    highest_price_list = []
+    lowest_price_list = []
+    closing_price_list = []
+    for item in trading_entries:
+        highest_price_list.append(float(item.highest_price))
+        lowest_price_list.append(float(item.lowest_price))
+        closing_price_list.append(float(item.closing_price))
+    highest_array = np.array(highest_price_list)
+    lowest_array = np.array(lowest_price_list)
+    closing_array = np.array(closing_price_list)
+    # calculate k1
+    highest_price = np.max(highest_array[1:])
+    lowest_price = np.min(lowest_array[1:])
+    k1 = 100 * (closing_array[1] - lowest_price) / (highest_price - lowest_price)
+    # calculate k2
+    highest_price = np.max(highest_array[:-1])
+    lowest_price = np.min(lowest_array[:-1])
+    k2 = 100 * (closing_array[0] - lowest_price) / (highest_price - lowest_price)
+    # calculate breakout price
+    # only consider the highest/lowest price within '13-day' window 
+    highest_price = np.max(highest_array[:-2])
+    lowest_price = np.min(lowest_array[:-2])
+    k3 = 3 * SHORT_K_LEVEL - k1 - k2
+    breakout_price = k3 * (highest_price - lowest_price) / 100 + lowest_price
+    return breakout_price
+    
 def watch_list_bear(data_array, SHORT_K_LEVEL):
     # Bear watch target
     # 1st criteria: long(70-day) k's are below LONG_K_LEVEL(eg 50)
     # 2nd criteria: for short(14-day) k's, all are above  SHORT_K_LEVEL(eg 20) but the last k is between SHORT_K_LEVEL(eg 20) and SHORT_K_LEVEL+SHORT_K_WINDOW(eg 30)
     # 3rd criteria: adx are below ADX_LEVEL(eg 15)
-    SHORT_K_WINDOW=10
-    short_k=data_array[2]
+    SHORT_K_WINDOW = 10
+    short_k = data_array[2]
     for data in short_k:
         if data < SHORT_K_LEVEL: return False 
-    if short_k[-1] > SHORT_K_LEVEL+SHORT_K_WINDOW: return False
+    if short_k[-1] > SHORT_K_LEVEL + SHORT_K_WINDOW: return False
     return True
 
 def _is_incrementing(data_array):
     # assuming input array is 1D
-    array_1=data_array[1:]
-    array_2=data_array[:-1]
-    diff=array_1-array_2
-    count = np.sum((diff>=0).astype(int))
+    array_1 = data_array[1:]
+    array_2 = data_array[:-1]
+    diff = array_1 - array_2
+    count = np.sum((diff >= 0).astype(int))
     if count != array_1.size: 
         return False
     else:
@@ -459,10 +488,10 @@ def _is_incrementing(data_array):
     
 def _is_decrementing(data_array):
     # assuming input array is 1D
-    array_1=data_array[1:]
-    array_2=data_array[:-1]
-    diff=array_1-array_2
-    count = np.sum((diff<=0).astype(int))
+    array_1 = data_array[1:]
+    array_2 = data_array[:-1]
+    diff = array_1 - array_2
+    count = np.sum((diff <= 0).astype(int))
     if count != array_1.size: 
         return False
     else:
@@ -470,54 +499,54 @@ def _is_decrementing(data_array):
     
     
 def stochastic_pop_drop_plot(stock_symbol, end_date=None):
-    _SHOW_LEGEND=False
+    _SHOW_LEGEND = False
     #***preparing data
     
     if not end_date:
         date_list = Trading_Date.objects.all().values_list('trading_date', flat=True).order_by('-trading_date')[:120]
-        start_date=date_list[len(date_list)-1]
-        end_date=date_list[0]
+        start_date = date_list[len(date_list) - 1]
+        end_date = date_list[0]
     else:         
-        #end_date format : eg. '20150401'
-        end_date=convertToDate(end_date)
+        # end_date format : eg. '20150401'
+        end_date = convertToDate(end_date)
         date_list = Trading_Date.objects.filter(trading_date__lte=end_date).values_list('trading_date', flat=True).order_by('-trading_date')[:120]
-        start_date=date_list[len(date_list)-1]
-        end_date=date_list[0]
-    directory="ipython/stock_strategy/%s" % end_date.strftime("%Y%m%d")
+        start_date = date_list[len(date_list) - 1]
+        end_date = date_list[0]
+    directory = "ipython/stock_strategy/%s" % end_date.strftime("%Y%m%d")
     if not os.path.exists(directory):
         os.makedirs(directory)
     fname = "%s/%s_stoch_osci_%s_%s" % (directory, stock_symbol, start_date, end_date)
     filename = '%s.txt' % fname
     if not os.path.isfile(filename):
-        stock=Stock_Item.objects.get_by_symbol(stock_symbol)
-        entries = stock.twse_trading_list.filter(trading_date__gte=start_date, 
-                                                 trading_date__lte=end_date, 
+        stock = Stock_Item.objects.get_by_symbol(stock_symbol)
+        entries = stock.twse_trading_list.filter(trading_date__gte=start_date,
+                                                 trading_date__lte=end_date,
                                                  strategy__seventy_day_k__isnull=False).select_related('strategy').order_by('trading_date') 
-        price_data=[]
-        long_kd_data=[]
-        short_kd_data=[]    
-        adx_data=[]          
+        price_data = []
+        long_kd_data = []
+        short_kd_data = []    
+        adx_data = []          
         for entry in entries:                    
-            price_data.append((entry.trading_date, 
-                       float(entry.opening_price), 
-                       float(entry.highest_price), 
-                       float(entry.lowest_price), 
-                       float(entry.closing_price), 
+            price_data.append((entry.trading_date,
+                       float(entry.opening_price),
+                       float(entry.highest_price),
+                       float(entry.lowest_price),
+                       float(entry.closing_price),
                        float(entry.trade_volume)))
-            long_kd_data.append((entry.trading_date, 
-                       float(entry.strategy.seventy_day_k), 
+            long_kd_data.append((entry.trading_date,
+                       float(entry.strategy.seventy_day_k),
                        float(entry.strategy.seventy_day_d)))
-            short_kd_data.append((entry.trading_date, 
-                       float(entry.strategy.fourteen_day_k), 
+            short_kd_data.append((entry.trading_date,
+                       float(entry.strategy.fourteen_day_k),
                        float(entry.strategy.fourteen_day_d)))
-            adx_data.append((entry.trading_date, 
-                       float(entry.strategy.pdi14), 
+            adx_data.append((entry.trading_date,
+                       float(entry.strategy.pdi14),
                        float(entry.strategy.ndi14),
                        float(entry.strategy.adx)))
         # write to file
-        json_data = {'%s_price' % stock_symbol : price_data, 
-                     '%s_70kd' % stock_symbol : long_kd_data, 
-                     '%s_14kd' % stock_symbol : short_kd_data, 
+        json_data = {'%s_price' % stock_symbol : price_data,
+                     '%s_70kd' % stock_symbol : long_kd_data,
+                     '%s_14kd' % stock_symbol : short_kd_data,
                      '%s_adx' % stock_symbol : adx_data }
         with open(filename, 'w') as fp:
             json.dump(json_data, fp, cls=DateEncoder)
@@ -541,7 +570,7 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
         trading_date_list.append(item[0])
         opening_price_list.append(item[1])
         closing_price_list.append(item[4])
-        volume_list.append(item[5]/1000)
+        volume_list.append(item[5] / 1000)
         # store a list of continuous integers for the 'float' date.
         # This is needed for finance lib candlestick_ohlc() to show continuous bar and whiskers without gap.
         item[0] = i + 1
@@ -558,19 +587,19 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
     # to show several axes objects in the same figure, here adjust the y limits of the first axes, so there is space at the bottom to show other axes.
     pad = 1.2
     yl = ax.get_ylim()
-    y_tick_gap=math.ceil((yl[1]-yl[0])/5)
+    y_tick_gap = math.ceil((yl[1] - yl[0]) / 5)
     ax.yaxis.set_ticks(np.arange(yl[0], yl[1], y_tick_gap))
-    #ax.locator_params(tight=True, axis='y',nbins=4)
+    # ax.locator_params(tight=True, axis='y',nbins=4)
     ax.set_ylim(yl[0] - (yl[1] - yl[0]) * pad, yl[1])
     # add a 2nd axes for volumes
     # axes position paramters here:
-    X_START=0.125
-    X_END=0.9
-    Y_START=0.52
-    Y_RANGE=0.1
-    Y_GAP=0.0
+    X_START = 0.125
+    X_END = 0.9
+    Y_START = 0.52
+    Y_RANGE = 0.1
+    Y_GAP = 0.0
     ax2 = ax.twinx()
-    ax2.set_position(matplotlib.transforms.Bbox([[X_START, Y_START-Y_RANGE], [X_END, Y_START]]))
+    ax2.set_position(matplotlib.transforms.Bbox([[X_START, Y_START - Y_RANGE], [X_END, Y_START]]))
     # change into nd array
     opening_price_arr = np.asarray(opening_price_list)
     closing_price_arr = np.asarray(closing_price_list)
@@ -581,15 +610,15 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
     ax2.bar(x_pos[up], volume_arr[up], color='red', width=0.8, align='center')
     ax2.bar(x_pos[down], volume_arr[down], color='green', width=0.8, align='center')
     ax2.bar(x_pos[no_change], volume_arr[no_change], color='yellow', width=0.8, align='center')
-    ax2.locator_params(tight=True, axis='y',nbins=4)
+    ax2.locator_params(tight=True, axis='y', nbins=4)
     ax2.set_ylabel('volume')
     ax2.grid(color='0.8', linestyle='--', linewidth=1)
     # add a 3rd axes for 70-day k/d
     ax3 = ax.twinx()
-    Y_START=Y_START-Y_RANGE-Y_GAP
-    ax3.set_position(matplotlib.transforms.Bbox([[X_START, Y_START-Y_RANGE], [X_END, Y_START]]))
-    seventy_k=[]
-    seventy_d=[]
+    Y_START = Y_START - Y_RANGE - Y_GAP
+    ax3.set_position(matplotlib.transforms.Bbox([[X_START, Y_START - Y_RANGE], [X_END, Y_START]]))
+    seventy_k = []
+    seventy_d = []
     for i, item in enumerate(long_kd_data):
         seventy_k.append(item[1])
         seventy_d.append(item[2])
@@ -598,23 +627,23 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
     seventy_k_arr = np.asarray(seventy_k)
     seventy_d_arr = np.asarray(seventy_d)
     # blue line for 70-day k,  red line for 70-day d
-    line_70k=ax3.plot(x_pos, seventy_k_arr, 'b-', label='%K(70,3)')
-    line_70d=ax3.plot(x_pos, seventy_d_arr, 'r-', label='%D(3)')
+    line_70k = ax3.plot(x_pos, seventy_k_arr, 'b-', label='%K(70,3)')
+    line_70d = ax3.plot(x_pos, seventy_d_arr, 'r-', label='%D(3)')
     # black horizontal line for 50 mark
-    line_50_mark=ax3.plot([x_pos[0],x_pos[-1]], [50,50], 'y-',linewidth=2)
+    line_50_mark = ax3.plot([x_pos[0], x_pos[-1]], [50, 50], 'y-', linewidth=2)
     #
-    ax3.locator_params(tight=True, axis='y',nbins=5)
+    ax3.locator_params(tight=True, axis='y', nbins=5)
     ax3.grid(color='c', linestyle='--', linewidth=1)
     ax3.set_ylabel('STO')
     if _SHOW_LEGEND:
-        ax3.legend(handles=[line_70k[0],line_70d[0]], ncol=2, loc='upper left', prop={'size':10})
+        ax3.legend(handles=[line_70k[0], line_70d[0]], ncol=2, loc='upper left', prop={'size':10})
     
     # add a 4th axes for 14-day k/d
     ax4 = ax.twinx()
-    Y_START=Y_START-Y_RANGE-Y_GAP
-    ax4.set_position(matplotlib.transforms.Bbox([[X_START, Y_START-Y_RANGE], [X_END, Y_START]]))
-    fourteen_k=[]
-    fourteen_d=[]
+    Y_START = Y_START - Y_RANGE - Y_GAP
+    ax4.set_position(matplotlib.transforms.Bbox([[X_START, Y_START - Y_RANGE], [X_END, Y_START]]))
+    fourteen_k = []
+    fourteen_d = []
     for i, item in enumerate(short_kd_data):
         fourteen_k.append(item[1])
         fourteen_d.append(item[2])
@@ -623,24 +652,24 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
     fourteen_k_arr = np.asarray(fourteen_k)
     fourteen_d_arr = np.asarray(fourteen_d)
     # blue line for 14-day k,  red line for 14-day d
-    line_14k=ax4.plot(x_pos, fourteen_k_arr, 'b-', label='%K(14,3)')
-    line_14d=ax4.plot(x_pos, fourteen_d_arr, 'r-', label='%D(3)')
+    line_14k = ax4.plot(x_pos, fourteen_k_arr, 'b-', label='%K(14,3)')
+    line_14d = ax4.plot(x_pos, fourteen_d_arr, 'r-', label='%D(3)')
     # black horizontal line for 80 and 20 mark
-    line_80_mark=ax4.plot([x_pos[0],x_pos[-1]], [80,80], 'y-',linewidth=2)
-    line_20_mark=ax4.plot([x_pos[0],x_pos[-1]], [20,20], 'y-',linewidth=2)
+    line_80_mark = ax4.plot([x_pos[0], x_pos[-1]], [80, 80], 'y-', linewidth=2)
+    line_20_mark = ax4.plot([x_pos[0], x_pos[-1]], [20, 20], 'y-', linewidth=2)
     #
-    ax4.locator_params(tight=True, axis='y',nbins=5)
+    ax4.locator_params(tight=True, axis='y', nbins=5)
     ax4.grid(color='c', linestyle='--', linewidth=1)
     ax4.set_ylabel('STO')
     if _SHOW_LEGEND:
-        ax4.legend(handles=[line_14k[0],line_14d[0]], ncol=2, loc='upper left', prop={'size':10})
+        ax4.legend(handles=[line_14k[0], line_14d[0]], ncol=2, loc='upper left', prop={'size':10})
     # add a 5th axes for ADX
     ax5 = ax.twinx()
-    Y_START=Y_START-Y_RANGE-Y_GAP
-    ax5.set_position(matplotlib.transforms.Bbox([[X_START, Y_START-Y_RANGE], [X_END, Y_START]]))
-    pdi14=[]
-    ndi14=[]
-    adx=[]
+    Y_START = Y_START - Y_RANGE - Y_GAP
+    ax5.set_position(matplotlib.transforms.Bbox([[X_START, Y_START - Y_RANGE], [X_END, Y_START]]))
+    pdi14 = []
+    ndi14 = []
+    adx = []
     for i, item in enumerate(adx_data):
         pdi14.append(item[1])
         ndi14.append(item[2])
@@ -651,17 +680,17 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
     ndi14_arr = np.asarray(ndi14)
     adx_arr = np.asarray(adx)
     # blue line for 14-day k,  red line for 14-day d
-    line_pdi14=ax5.plot(x_pos, pdi14_arr, 'g-', label='+DI')
-    line_ndi14=ax5.plot(x_pos, ndi14_arr, 'r-', label='-DI')
-    line_adx=ax5.plot(x_pos, adx_arr, 'k-', label='ADX(14)')
+    line_pdi14 = ax5.plot(x_pos, pdi14_arr, 'g-', label='+DI')
+    line_ndi14 = ax5.plot(x_pos, ndi14_arr, 'r-', label='-DI')
+    line_adx = ax5.plot(x_pos, adx_arr, 'k-', label='ADX(14)')
     # black horizontal line for 20 mark
-    line_20_mark=ax5.plot([x_pos[0],x_pos[-1]], [20,20], 'y-',linewidth=2)
+    line_20_mark = ax5.plot([x_pos[0], x_pos[-1]], [20, 20], 'y-', linewidth=2)
     #
-    ax5.locator_params(tight=True, axis='y',nbins=5)
+    ax5.locator_params(tight=True, axis='y', nbins=5)
     ax5.grid(color='c', linestyle='--', linewidth=1)
     ax5.set_ylabel('ADX')
     if _SHOW_LEGEND:
-        ax5.legend(handles=[line_pdi14[0],line_ndi14[0], line_adx[0]], ncol=3, loc='upper left', prop={'size':10})
+        ax5.legend(handles=[line_pdi14[0], line_ndi14[0], line_adx[0]], ncol=3, loc='upper left', prop={'size':10})
     
     fig.set_size_inches(18.5, 10.5)
     # water mark position bottom right

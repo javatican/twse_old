@@ -40,7 +40,8 @@ from warrant_app.utils.trading_util import moving_avg, \
     update_di_adx_for_stock, pre_filtering_bull, breakout_list_bull, \
     breakout2_list_bull, breakout3_list_bull, watch_list_bull, \
     pre_filtering_bear, breakout_list_bear, breakout2_list_bear, \
-    breakout3_list_bear, watch_list_bear, stochastic_pop_drop_plot
+    breakout3_list_bear, watch_list_bear, stochastic_pop_drop_plot,\
+    predict_breakout_price
 from warrant_app.utils.warrant_util import check_if_warrant_item, to_dict
 
 
@@ -2131,7 +2132,7 @@ def strategy_by_stochastic_pop_drop_job():
             
         for stock in stock_items: 
             # first make sure the stocks have trading entries with non null strategy.fourteen_day_k, strategy.seventy_day_k, strategy.adx values within the trading date range
-            trading_entries = stock.twse_trading_list.filter(trading_date__gte=target_td, 
+            trading_entries = stock.twse_trading_list.filter(trading_date__gte=target_td,
                                                              strategy__fourteen_day_k__isnull=False, 
                                                              strategy__seventy_day_k__isnull=False, 
                                                              strategy__adx__isnull=False).select_related('strategy').order_by('trading_date')
@@ -2140,12 +2141,12 @@ def strategy_by_stochastic_pop_drop_job():
             if len(trading_entries) != TRADING_DATE_RANGE: 
                 continue 
             data_list = [(float(entry.strategy.seventy_day_k),
-              float(entry.strategy.seventy_day_d),
-              float(entry.strategy.fourteen_day_k),
-            float(entry.strategy.fourteen_day_d),
-            float(entry.strategy.pdi14),
-            float(entry.strategy.ndi14), 
-              float(entry.strategy.adx)) for entry in trading_entries]
+                          float(entry.strategy.seventy_day_d),
+                          float(entry.strategy.fourteen_day_k),
+                          float(entry.strategy.fourteen_day_d),
+                          float(entry.strategy.pdi14),
+                          float(entry.strategy.ndi14), 
+                          float(entry.strategy.adx)) for entry in trading_entries]
             data_array=np.asarray(data_list)
             data_array_t= data_array.T
             selected=False
@@ -2198,7 +2199,11 @@ def strategy_by_stochastic_pop_drop_job():
             
         print "Number of bull watch target: %s" % len(long_watch_list)
         for stock in long_watch_list:
-            print "Found a watch bull: stock symbol = %s(%s,short_k=%s), has_warrant=%s" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant)
+            predicted_breakout_price=None
+            if INSPECT_LATEST_DATA:
+                predicted_breakout_price=predict_breakout_price(stock,BULL_SHORT_K_LEVEL)
+            print "Found a watch bull: stock symbol = %s(%s,short_k=%s), has_warrant=%s, breakout price to watch=%s" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant, predicted_breakout_price)
+        #
         print "============================================================="  
         print "Number of bear breakout target: %s" % len(short_breakout_list)
         for stock in short_breakout_list:
@@ -2214,9 +2219,10 @@ def strategy_by_stochastic_pop_drop_job():
             
         print "Number of bear watch target: %s" % len(short_watch_list)
         for stock in short_watch_list:
-            print "Found a watch bear: stock symbol = %s(%s,short_k=%s), has_warrant=%s" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant)
-        
-
+            predicted_breakout_price=None
+            if INSPECT_LATEST_DATA:
+                predicted_breakout_price=predict_breakout_price(stock,BEAR_SHORT_K_LEVEL)
+            print "Found a watch bear: stock symbol = %s(%s,short_k=%s), has_warrant=%s, breakout price to watch=%s" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant, predicted_breakout_price)
         transaction.commit()
         job.success()
     except: 
