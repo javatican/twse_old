@@ -381,7 +381,8 @@ class Twse_Trading_Warrant(Model):
         unique_together = ("warrant_symbol", "trading_date")
 
 class IndexItemMixin(object):
-    pass
+    def get_index_with_wearn_symbol(self):
+        return self.filter(wearn_symbol__isnull=False)
     
 class IndexItemQuerySet(QuerySet, IndexItemMixin):
     pass
@@ -393,12 +394,15 @@ class IndexItemManager(models.Manager, IndexItemMixin):
         return self.get(name=name)
     def get_by_tri_name(self, name):
         return self.get(name=name, is_total_return_index=True)
+    def get_wearn_symbols(self):
+        return self.filter(wearn_symbol__isnull=False).values_list('wearn_symbol', flat=True)
     
 class Index_Item(Model):
     name = models.CharField(default='', max_length=100, verbose_name=_('index_name'))
     name_en = models.CharField(default='', max_length=100, verbose_name=_('index_name_en'))
     is_total_return_index = models.BooleanField(default=False, verbose_name=_('is_total_return_index'))  
-
+    wearn_symbol = models.CharField(max_length=15, null=True, verbose_name=_('wearn_symbol'))
+    
     objects = IndexItemManager()
 
 class IndexChangeInfoMixin(object):
@@ -411,14 +415,29 @@ class IndexChangeInfoQuerySet(QuerySet, IndexChangeInfoMixin):
 class IndexChangeInfoManager(models.Manager, IndexChangeInfoMixin):
     def get_queryset(self):
         return IndexChangeInfoQuerySet(self.model, using=self._db)
-    
+    def get_last_trading_date_for_trade_value(self):
+        data = self.filter(trade_value__isnull=False).aggregate(Max('trading_date'))
+        return data['trading_date__max']
+
+        
 class Index_Change_Info(Model):
     twse_index = models.ForeignKey("core.Index_Item", related_name="index_change_list", verbose_name=_('twse_index'))
-    closing_index = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name=_('closing_index')) 
-    change = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name=_('change')) 
-    change_in_percentage = models.DecimalField(max_digits=8, decimal_places=2, default=0, verbose_name=_('change_in_percentage')) 
+    trade_value = models.DecimalField(max_digits=15, decimal_places=0, null=True, verbose_name=_('trade_value')) 
+    opening_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('opening_price'))
+    highest_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('highest_price'))
+    lowest_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('lowest_price'))
+    closing_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('closing_price')) 
+    change = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('change')) 
+    change_in_percentage = models.DecimalField(max_digits=8, decimal_places=2, null=True,  verbose_name=_('change_in_percentage')) 
     trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
-    
+#
+    week_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('week_avg'))
+    two_week_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('two_week_avg'))
+    month_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('month_avg'))
+    quarter_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('quarter_avg'))
+    half_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('half_avg'))
+    year_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('year_avg'))
+
     objects = IndexChangeInfoManager()
 #
     class Meta:

@@ -587,10 +587,10 @@ def _process_market_highlight(qdate_str):
         # process rows[5]
         cells = rows[5].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')
-        dt_item.closing_index = float(dt_data)
+        dt_item.closing_price = float(dt_data)
         dt_data = cells[3].string.strip().replace(',', '')
         dt_item.change = float(dt_data)
-        dt_item.change_in_percentage = (dt_item.change / dt_item.closing_index) * 100.0
+        dt_item.change_in_percentage = (dt_item.change / dt_item.closing_price) * 100.0
         # process rows[6]
         cells = rows[6].find_all('td', recursive=False)
         dt_data = cells[1].string.strip().replace(',', '')

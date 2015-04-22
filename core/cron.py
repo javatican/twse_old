@@ -63,6 +63,192 @@ logger = logging.getLogger('warrant_app.cronjob')
 #         items_to_create.append(instance)
 #     Twse_Trading_Warrant.objects.bulk_create(items_to_create)
 #     
+
+#below function is used to insert 'IX0001','IX0027', 'IX0039' index_change_info data into twse_trading
+# only run once
+def update_twse_trading_for_index():
+    check_list=[]
+    stocks=Stock_Item.objects.all()
+    for stock in stocks:
+        if not stock.twse_trading_list.exists():
+            check_list.append(stock)
+    strategy_objects_to_save=[]
+    for item in check_list:
+        if item.symbol=='IX0001':
+            #IX0001 stock symbol is 'IDXWT' index wearn symbol
+            index_item=Index_Item.objects.get(wearn_symbol='IDXWT')
+        elif item.symbol=='IX0027':
+            # IX0027 is 'IDX23'
+            index_item=Index_Item.objects.get(wearn_symbol='IDX23')
+        elif item.symbol=='IX0039':
+            # IX0039 is 'IDX28'
+            index_item=Index_Item.objects.get(wearn_symbol='IDX28')
+            #
+        ici_list=index_item.index_change_list.all()
+        for ici_item in ici_list:
+            trading_item=Twse_Trading()
+            trading_item.stock_symbol=item
+            trading_item.trading_date=ici_item.trading_date
+            trading_item.trade_value=ici_item.trade_value
+            trading_item.opening_price=ici_item.opening_price
+            trading_item.highest_price=ici_item.highest_price
+            trading_item.lowest_price=ici_item.lowest_price
+            trading_item.closing_price=ici_item.closing_price
+            trading_item.price_change=ici_item.change
+            trading_item.save()
+            #create strategy object
+            tts = Twse_Trading_Strategy()
+            tts.trading = trading_item
+            tts.trading_date = trading_item.trading_date
+            tts.stock_symbol= trading_item.stock_symbol
+            strategy_objects_to_save.append(tts)     
+                    
+            #
+    Twse_Trading_Strategy.objects.bulk_create(strategy_objects_to_save)
+    
+    
+    
+def download_twse_various_index_job(year=None, month_list=None):
+    # This job is used to download various twse index (open,high, low, close) from wearn site 
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = download_twse_various_index_job.__name__ 
+    try:    
+        last_data_date=Index_Change_Info.objects.get_last_trading_date_for_trade_value()
+        today = datetime.date.today()
+        if not year:
+            #default: this year
+            year = today.year
+        if not month_list:
+            month_list = []
+            month_list.append(today.month)
+        # need stock object references for symbols 'IX0001', 'IX0027', 'IX0039' for inserting twse_trading entries in DB 
+        stock_IX0001=Stock_Item.objects.get(symbol='IX0001')
+        stock_IX0027=Stock_Item.objects.get(symbol='IX0027')
+        stock_IX0039=Stock_Item.objects.get(symbol='IX0039')
+        strategy_objects_to_save=[]
+        # the year parameter is in ROC year , month with 2 digits
+        for n in month_list:
+            if n < 10:
+                month = "0%s" % n
+            else:
+                month = n
+                #
+            index_list=Index_Item.objects.get_index_with_wearn_symbol()
+            for index_entry in index_list:
+                index_symbol=index_entry.wearn_symbol
+                try:        
+                    serviceUrl = 'http://stock.wearn.com/adata.asp?Year=%s&month=%s&kind=%s' % (roc_year(year) , month, index_symbol)
+                    print serviceUrl
+                    httpResponse = requests.get(serviceUrl)
+                    httpResponse.encoding = "big5"
+                except requests.HTTPError, e:
+                    result = e.read()
+                    raise Exception(result)
+                
+                soup = BeautifulSoup(httpResponse.text, 'lxml')              
+                div_element = soup.find('div', class_='stockalllist')
+                table_element = div_element.find('table')
+                tr_list = table_element.find_all('tr')
+                #skip 2 rows
+                for j, row in enumerate(tr_list[2:]): 
+                    ici_item=None
+                    for i, td_element in enumerate(row.find_all('td', recursive=False)):
+                        dt_data = td_element.string.strip()
+                        # dt_data contains some &nbsp; characters, need to remove them
+                        dt_data=dt_data.replace('&nbsp;', '')
+                        if i == 0:
+                            trading_date = roc_year_to_western(dt_data)
+                            # if data's trading_date is before last_data_date, skip it.
+                            if trading_date <= last_data_date: break
+                            # assuming the Index_Change_Info instance is already in the DB, if not, skip it.
+                            try:
+                                ici_item = Index_Change_Info.objects.get(twse_index=index_entry, trading_date=trading_date)
+                            except Index_Change_Info.DoesNotExist: 
+                                break                               
+                        elif i == 1:
+                            ici_item.opening_price = float(dt_data.replace(',', ''))
+                        elif i == 2:
+                            ici_item.highest_price = float(dt_data.replace(',', ''))
+                        elif i == 3:
+                            ici_item.lowest_price = float(dt_data.replace(',', ''))
+                            # closing_price no need to update , since it is already there.
+#                         elif i == 4:
+#                             ici_item.closing_price = float(dt_data.replace(',', ''))   
+                        elif i == 5:
+                            ici_item.trade_value = float(dt_data.replace(',', ''))*1000  
+                    if ici_item:
+                        ici_item.save()
+                        # if index_symbol is 'IDXWT', 'IDX23', 'IDX28' --> create twse_trading items in DB
+                        if index_symbol=="IDXWT":                          
+                            trading_item=Twse_Trading()
+                            trading_item.stock_symbol=stock_IX0001
+                            trading_item.trading_date=ici_item.trading_date
+                            trading_item.trade_value=ici_item.trade_value
+                            trading_item.opening_price=ici_item.opening_price
+                            trading_item.highest_price=ici_item.highest_price
+                            trading_item.lowest_price=ici_item.lowest_price
+                            trading_item.closing_price=ici_item.closing_price
+                            trading_item.price_change=ici_item.change
+                            trading_item.save()
+                            #create strategy object
+                            tts = Twse_Trading_Strategy()
+                            tts.trading = trading_item
+                            tts.trading_date = trading_item.trading_date
+                            tts.stock_symbol= trading_item.stock_symbol
+                            strategy_objects_to_save.append(tts)
+                        elif index_symbol=="IDX23":                          
+                            trading_item=Twse_Trading()
+                            trading_item.stock_symbol=stock_IX0027
+                            trading_item.trading_date=ici_item.trading_date
+                            trading_item.trade_value=ici_item.trade_value
+                            trading_item.opening_price=ici_item.opening_price
+                            trading_item.highest_price=ici_item.highest_price
+                            trading_item.lowest_price=ici_item.lowest_price
+                            trading_item.closing_price=ici_item.closing_price
+                            trading_item.price_change=ici_item.change
+                            trading_item.save()
+                            #create strategy object
+                            tts = Twse_Trading_Strategy()
+                            tts.trading = trading_item
+                            tts.trading_date = trading_item.trading_date
+                            tts.stock_symbol= trading_item.stock_symbol
+                            strategy_objects_to_save.append(tts)
+                        elif index_symbol=="IDX28":                          
+                            trading_item=Twse_Trading()
+                            trading_item.stock_symbol=stock_IX0039
+                            trading_item.trading_date=ici_item.trading_date
+                            trading_item.trade_value=ici_item.trade_value
+                            trading_item.opening_price=ici_item.opening_price
+                            trading_item.highest_price=ici_item.highest_price
+                            trading_item.lowest_price=ici_item.lowest_price
+                            trading_item.closing_price=ici_item.closing_price
+                            trading_item.price_change=ici_item.change
+                            trading_item.save()
+                            #create strategy object
+                            tts = Twse_Trading_Strategy()
+                            tts.trading = trading_item
+                            tts.trading_date = trading_item.trading_date
+                            tts.stock_symbol= trading_item.stock_symbol
+                            strategy_objects_to_save.append(tts)
+        if len(strategy_objects_to_save)>0: 
+            Twse_Trading_Strategy.objects.bulk_create(strategy_objects_to_save)
+#
+        transaction.commit()
+        job.success()
+    except: 
+        print traceback.format_exc()
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+        
+        
 def download_twse_index_stats_job(year=None, month_list=None):
     # this job is used to download twse index open,high, low, close index
     # as well as create Trading_Date entry
@@ -1492,7 +1678,7 @@ def _process_index(qdate_str):
                 elif i == 1: 
                     temp_data = dt_data.replace(',', '')
                     if is_float(temp_data): 
-                        dt_item.closing_index = float(temp_data)                
+                        dt_item.closing_price = float(temp_data)                
                 elif i == 2:
                     up_or_down = check_up_or_down(dt_data) 
                 elif i == 3:
@@ -1536,7 +1722,7 @@ def _process_tri_index(qdate_str):
                 elif i == 1: 
                     temp_data = dt_data.replace(',', '')
                     if is_float(temp_data): 
-                        dt_item.closing_index = float(temp_data)                       
+                        dt_item.closing_price = float(temp_data)                       
                 elif i == 2:
                     up_or_down = check_up_or_down(dt_data) 
                 elif i == 3:

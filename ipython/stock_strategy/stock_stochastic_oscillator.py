@@ -22,7 +22,7 @@ _INTERACTIVE = True
 _SHOW_LEGEND=False
 # _INTERACTIVE=False
 #***preparing data
-stock_symbol='3008'
+stock_symbol='4938'
 if _USE_LATEST_DATA:
     date_list = Trading_Date.objects.all().values_list('trading_date', flat=True).order_by('-trading_date')[:120]
     start_date=date_list[len(date_list)-1]
@@ -33,7 +33,7 @@ else:
     date_list = Trading_Date.objects.filter(trading_date__lte=end_date).values_list('trading_date', flat=True).order_by('-trading_date')[:120]
     start_date=date_list[len(date_list)-1]
     end_date=date_list[0]
-directory="ipython/stock_strategy/%s" % end_date.strftime("%Y%m%d")
+directory="ipython/stock_strategy/inspect/%s" % end_date.strftime("%Y%m%d")
 if not os.path.exists(directory):
     os.makedirs(directory)
 fname = "%s/%s_stoch_osci_%s_%s" % (directory, stock_symbol, start_date, end_date)
