@@ -236,9 +236,9 @@ class TwseTradingManager(models.Manager, TwseTradingMixin):
                    float(entry.trade_volume)) for entry in entries]
         return result
 
-    def price_lte_date(self, target_date):
+    def price_volume_lte_date(self, target_date):
         # used together with by_symbol() or RelatedManager 'twse_trading_list'
-        return self.lte_date(target_date).values_list('closing_price', flat=True)
+        return self.lte_date(target_date).values_list('closing_price', 'trade_volume')
     
     
 class Twse_Trading(Model):
@@ -277,6 +277,8 @@ class Twse_Trading(Model):
     quarter_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('quarter_avg'))
     half_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('half_avg'))
     year_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('year_avg'))
+    year_volume_avg = models.DecimalField(max_digits=15, decimal_places=0, null=True, verbose_name=_('year_volume_avg'))
+
 
     objects = TwseTradingManager() 
 #
@@ -591,8 +593,8 @@ class TwseIndexStatsManager(models.Manager, TwseIndexStatsMixin):
     
 #     def get_dates_for_missing_avg(self):
 #         return self.filter(week_avg__isnull=True).values_list('trading_date', flat=True)
-    def price_lte_date(self, target_date):
-        return self.lte_date(target_date).values_list('closing_price', flat=True)
+    def price_value_lte_date(self, target_date):
+        return self.lte_date(target_date).values_list('closing_price','trade_value')
     
 class Twse_Index_Stats(Model):
     trading_date = models.DateField(auto_now_add=False, null=False, unique=True, verbose_name=_('trading_date')) 
@@ -617,6 +619,8 @@ class Twse_Index_Stats(Model):
     week_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('week_k'))
     week_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('week_d'))
     month_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('month_k'))
-    month_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('month_d'))
+    month_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('month_d'))                                 
+    year_value_avg = models.DecimalField(max_digits=15, decimal_places=0, null=True, verbose_name=_('year_value_avg'))
+    
     objects = TwseIndexStatsManager() 
 #

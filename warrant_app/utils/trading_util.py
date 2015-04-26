@@ -1,7 +1,10 @@
+from __future__ import unicode_literals
+
 import json
 import math
 import matplotlib
 from matplotlib.finance import candlestick_ohlc
+from matplotlib.font_manager import FontProperties
 import os
 
 from core.models import Trading_Date, Stock_Item
@@ -460,7 +463,7 @@ def predict_breakout_price(stock, SHORT_K_LEVEL):
     highest_price = np.max(highest_array[:-2])
     lowest_price = np.min(lowest_array[:-2])
     k3 = 3 * SHORT_K_LEVEL - k1 - k2
-    breakout_price = k3 * (highest_price - lowest_price) / 100 + lowest_price
+    breakout_price =round(k3 * (highest_price - lowest_price) / 100 + lowest_price, 2)
     return breakout_price
     
 def watch_list_bear(data_array, SHORT_K_LEVEL):
@@ -498,7 +501,9 @@ def _is_decrementing(data_array):
         return True
     
     
-def stochastic_pop_drop_plot(stock_symbol, end_date=None):
+def stochastic_pop_drop_plot(stock_symbol, category=None, end_date=None):
+    
+    font = FontProperties(fname="/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", size = 14)
     _SHOW_LEGEND = False
     #***preparing data
     
@@ -513,6 +518,8 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
         start_date = date_list[len(date_list) - 1]
         end_date = date_list[0]
     directory = "ipython/stock_strategy/%s" % end_date.strftime("%Y%m%d")
+    if category:
+        directory = "%s/%s" % (directory, category)
     if not os.path.exists(directory):
         os.makedirs(directory)
     fname = "%s/%s_stoch_osci_%s_%s" % (directory, stock_symbol, start_date, end_date)
@@ -526,13 +533,15 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
         long_kd_data = []
         short_kd_data = []    
         adx_data = []          
-        for entry in entries:                    
+        for entry in entries:     
+            # not every trading data has year_volume_avg               
             price_data.append((entry.trading_date,
                        float(entry.opening_price),
                        float(entry.highest_price),
                        float(entry.lowest_price),
                        float(entry.closing_price),
-                       float(entry.trade_volume)))
+                       float(entry.trade_volume),
+                       float(entry.year_volume_avg) if entry.year_volume_avg else None))
             long_kd_data.append((entry.trading_date,
                        float(entry.strategy.seventy_day_k),
                        float(entry.strategy.seventy_day_d)))
@@ -544,7 +553,8 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
                        float(entry.strategy.ndi14),
                        float(entry.strategy.adx)))
         # write to file
-        json_data = {'%s_price' % stock_symbol : price_data,
+        json_data = {'stock_name': stock.short_name,
+                     '%s_price' % stock_symbol : price_data,
                      '%s_70kd' % stock_symbol : long_kd_data,
                      '%s_14kd' % stock_symbol : short_kd_data,
                      '%s_adx' % stock_symbol : adx_data }
@@ -553,6 +563,7 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
     #
     with open(filename, 'r') as fp:
         json_data = json.load(fp) 
+    stock_name=json_data['stock_name'] 
     price_data = json_data['%s_price' % stock_symbol ] 
     long_kd_data = json_data['%s_70kd' % stock_symbol ] 
     short_kd_data = json_data['%s_14kd' % stock_symbol ] 
@@ -563,7 +574,8 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
 #    
     fig, ax = plt.subplots()
     trading_date_list = [] 
-    volume_list = [] 
+    volume_list = []    
+    year_volume_avg_list = [] 
     opening_price_list = []
     closing_price_list = []
     for i, item in enumerate(price_data):
@@ -571,6 +583,7 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
         opening_price_list.append(item[1])
         closing_price_list.append(item[4])
         volume_list.append(item[5] / 1000)
+        year_volume_avg_list.append(item[6]/1000 if item[6] else None)
         # store a list of continuous integers for the 'float' date.
         # This is needed for finance lib candlestick_ohlc() to show continuous bar and whiskers without gap.
         item[0] = i + 1
@@ -579,7 +592,7 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
     x_pos = np.arange(1, N + 1)
     #
     ax.set_ylabel('price')
-    ax.set_title('%s price chart' % stock_symbol)
+    ax.set_title('%s(%s) price chart' % (stock_symbol, stock_name), fontproperties = font)
     ax.set_xticks(x_pos[::10])
     ax.set_xticks(x_pos, minor=True)
     ax.set_xticklabels(trading_date_list[::10], rotation=45)
@@ -607,9 +620,13 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
     down = opening_price_arr - closing_price_arr > 0
     up = opening_price_arr - closing_price_arr < 0
     no_change = opening_price_arr - closing_price_arr == 0
+    # need to specify dtype , so any None value in year_volume_avg_list will be transformed into a nan
+    year_volume_avg_arr = np.array(year_volume_avg_list, dtype=np.float)
+    has_avg_data = ~np.isnan(year_volume_avg_arr)
     ax2.bar(x_pos[up], volume_arr[up], color='red', width=0.8, align='center')
     ax2.bar(x_pos[down], volume_arr[down], color='green', width=0.8, align='center')
     ax2.bar(x_pos[no_change], volume_arr[no_change], color='yellow', width=0.8, align='center')
+    ax2.plot(x_pos[has_avg_data], year_volume_avg_arr[has_avg_data], 'r-', label='year avg vol')
     ax2.locator_params(tight=True, axis='y', nbins=4)
     ax2.set_ylabel('volume')
     ax2.grid(color='0.8', linestyle='--', linewidth=1)
@@ -700,3 +717,44 @@ def stochastic_pop_drop_plot(stock_symbol, end_date=None):
     
     fig.savefig('%s.png' % fname)
     plt.close(fig)
+
+
+
+def tell_me_current_smoothed_14k(stock_symbol, current_price, max_price=None, min_price=None):
+    LOOK_BACK_PERIOD = 14
+    stock=Stock_Item.objects.get(symbol=stock_symbol)
+    trading_entries = stock.twse_trading_list.all().order_by('-trading_date')[:LOOK_BACK_PERIOD + 1]
+    highest_price_list = []
+    lowest_price_list = []
+    closing_price_list = []
+    for item in trading_entries:
+        highest_price_list.append(float(item.highest_price))
+        lowest_price_list.append(float(item.lowest_price))
+        closing_price_list.append(float(item.closing_price))
+    highest_array = np.array(highest_price_list)
+    lowest_array = np.array(lowest_price_list)
+    closing_array = np.array(closing_price_list)
+    # calculate k1
+    highest_price = np.max(highest_array[1:])
+    lowest_price = np.min(lowest_array[1:])
+    k1 = 100 * (closing_array[1] - lowest_price) / (highest_price - lowest_price)
+    # calculate k2
+    highest_price = np.max(highest_array[:-1])
+    lowest_price = np.min(lowest_array[:-1])
+    k2 = 100 * (closing_array[0] - lowest_price) / (highest_price - lowest_price)
+    # based on current_price and calculate k3
+    # only consider the highest/lowest price within '13-day' window 
+    highest_price = np.max(highest_array[:-2])
+    lowest_price = np.min(lowest_array[:-2])
+    if max_price and max_price>highest_price: 
+        highest_price=max_price
+    if min_price and min_price<lowest_price: 
+        lowest_price=min_price
+    k3 = 100 * (current_price - lowest_price) / (highest_price - lowest_price)
+    if k3>100:
+        k3=100
+    elif k3<0: 
+        k3=0
+    smoothed_14k= round((k1+k2+k3)/3 , 2)
+    return smoothed_14k
+    
