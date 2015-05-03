@@ -221,18 +221,18 @@ class TwseTradingManager(models.Manager, TwseTradingMixin):
         # return list of tuples containing d, open, high, low, close, volume
         entries = self.filter(trading_date__gte=start_date, trading_date__lte=end_date)
         if date_as_num:
-            result = [(date2num(entry.trading_date), 
-                   float(entry.opening_price), 
-                   float(entry.highest_price), 
-                   float(entry.lowest_price), 
-                   float(entry.closing_price), 
+            result = [(date2num(entry.trading_date),
+                   float(entry.opening_price),
+                   float(entry.highest_price),
+                   float(entry.lowest_price),
+                   float(entry.closing_price),
                    float(entry.trade_volume)) for entry in entries]
         else:
-            result = [(entry.trading_date, 
-                   float(entry.opening_price), 
-                   float(entry.highest_price), 
-                   float(entry.lowest_price), 
-                   float(entry.closing_price), 
+            result = [(entry.trading_date,
+                   float(entry.opening_price),
+                   float(entry.highest_price),
+                   float(entry.lowest_price),
+                   float(entry.closing_price),
                    float(entry.trade_volume)) for entry in entries]
         return result
 
@@ -284,7 +284,11 @@ class Twse_Trading(Model):
 #
     class Meta:
         unique_together = ("stock_symbol", "trading_date")
-
+    # below method is required to return the 'strategy' instance, because it holds stochastic oscillator/ADX related strategy fields in it.
+    def get_trading_strategy(self):
+        return self.strategy
+        
+        
 class TwseTradingStrategyMixin(object): 
     pass
 class TwseTradingStrategyQuerySet(QuerySet, TwseTradingStrategyMixin):
@@ -410,7 +414,14 @@ class Index_Item(Model):
 class IndexChangeInfoMixin(object):
     def by_date(self, trading_date):
         return self.filter(trading_date=trading_date)
-    
+    def by_index(self, twse_index):
+        return self.filter(twse_index=twse_index)
+    def get_missing_avg(self):
+        # used together with by_index() or RelatedManager 'index_change_list'
+        return self.filter(week_avg__isnull=True)
+    def lte_date(self, target_date):
+        return self.filter(trading_date__lte=target_date)
+        
 class IndexChangeInfoQuerySet(QuerySet, IndexChangeInfoMixin):
     pass
 
@@ -420,8 +431,10 @@ class IndexChangeInfoManager(models.Manager, IndexChangeInfoMixin):
     def get_last_trading_date_for_trade_value(self):
         data = self.filter(trade_value__isnull=False).aggregate(Max('trading_date'))
         return data['trading_date__max']
-
-        
+    def price_value_lte_date(self, target_date):
+        # used together with by_index() or RelatedManager 'index_change_list'
+        return self.lte_date(target_date).values_list('closing_price', 'trade_value')
+    
 class Index_Change_Info(Model):
     twse_index = models.ForeignKey("core.Index_Item", related_name="index_change_list", verbose_name=_('twse_index'))
     trade_value = models.DecimalField(max_digits=15, decimal_places=0, null=True, verbose_name=_('trade_value')) 
@@ -430,7 +443,7 @@ class Index_Change_Info(Model):
     lowest_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('lowest_price'))
     closing_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('closing_price')) 
     change = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('change')) 
-    change_in_percentage = models.DecimalField(max_digits=8, decimal_places=2, null=True,  verbose_name=_('change_in_percentage')) 
+    change_in_percentage = models.DecimalField(max_digits=8, decimal_places=2, null=True, verbose_name=_('change_in_percentage')) 
     trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
 #
     week_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('week_avg'))
@@ -439,12 +452,28 @@ class Index_Change_Info(Model):
     quarter_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('quarter_avg'))
     half_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('half_avg'))
     year_avg = models.DecimalField(max_digits=10, decimal_places=2, null=True, verbose_name=_('year_avg'))
-
+    year_value_avg = models.DecimalField(max_digits=15, decimal_places=0, null=True, verbose_name=_('year_value_avg'))
+#   
+    fourteen_day_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('fourteen_day_k'))
+    fourteen_day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('fourteen_day_d'))
+    seventy_day_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('seventy_day_k'))
+    seventy_day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('seventy_day_d'))
+    tr14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('tr14'))
+    pdm14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('pdm14'))
+    ndm14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('ndm14'))
+    #
+    pdi14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('pdi14'))
+    ndi14 = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('ndi14'))
+    adx = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('adx'))
+    
     objects = IndexChangeInfoManager()
 #
     class Meta:
         unique_together = ("twse_index", "trading_date")
-        
+    # below method is required to return the instance itself, because it holds stochastic oscillator/ADX related strategy fields in its own model.
+    def get_trading_strategy(self):
+        return self
+  
 class MarketSummaryTypeMixin(object):
     pass
     
@@ -576,25 +605,25 @@ class TwseIndexStatsManager(models.Manager, TwseIndexStatsMixin):
         # return list of tuples containing d, open, high, low, close, volume
         entries = self.filter(trading_date__gte=start_date, trading_date__lte=end_date)
         if date_as_num:
-            result = [(date2num(entry.trading_date), 
-                   float(entry.opening_price), 
-                   float(entry.highest_price), 
-                   float(entry.lowest_price), 
-                   float(entry.closing_price), 
+            result = [(date2num(entry.trading_date),
+                   float(entry.opening_price),
+                   float(entry.highest_price),
+                   float(entry.lowest_price),
+                   float(entry.closing_price),
                    float(entry.trade_value)) for entry in entries]
         else:
-            result = [(entry.trading_date, 
-                   float(entry.opening_price), 
-                   float(entry.highest_price), 
-                   float(entry.lowest_price), 
-                   float(entry.closing_price), 
+            result = [(entry.trading_date,
+                   float(entry.opening_price),
+                   float(entry.highest_price),
+                   float(entry.lowest_price),
+                   float(entry.closing_price),
                    float(entry.trade_value)) for entry in entries]
         return result
     
 #     def get_dates_for_missing_avg(self):
 #         return self.filter(week_avg__isnull=True).values_list('trading_date', flat=True)
     def price_value_lte_date(self, target_date):
-        return self.lte_date(target_date).values_list('closing_price','trade_value')
+        return self.lte_date(target_date).values_list('closing_price', 'trade_value')
     
 class Twse_Index_Stats(Model):
     trading_date = models.DateField(auto_now_add=False, null=False, unique=True, verbose_name=_('trading_date')) 

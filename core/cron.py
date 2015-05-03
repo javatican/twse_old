@@ -34,14 +34,20 @@ from warrant_app.utils.black_scholes import option_price_implied_volatility_call
 from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year, \
     convertToDate, is_third_wednesday, roc_year
 from warrant_app.utils.logutil import log_message
+from warrant_app.utils.mail_util import notify_by_mail
 from warrant_app.utils.stringutil import is_float
 from warrant_app.utils.trading_util import moving_avg, \
-    calc_stochastic_oscillator_for_stock, recalc_all_di_adx_for_stock, \
-    update_di_adx_for_stock, pre_filtering_bull, breakout_list_bull, \
-    breakout2_list_bull, breakout3_list_bull, watch_list_bull, \
-    pre_filtering_bear, breakout_list_bear, breakout2_list_bear, \
-    breakout3_list_bear, watch_list_bear, stochastic_pop_drop_plot,\
-    predict_breakout_price
+    calc_stochastic_oscillator, recalc_all_di_adx, \
+    update_di_adx, stoch_pop_pre_filtering_bull, stoch_pop_breakout_list_bull, \
+    stoch_pop_breakout2_list_bull, stoch_pop_breakout3_list_bull, stoch_pop_watch_list_bull, \
+    stoch_drop_pre_filtering_bear, stoch_drop_breakout_list_bear, stoch_drop_breakout2_list_bear, \
+    stoch_drop_breakout3_list_bear, stoch_drop_watch_list_bear, \
+    predict_breakout_price, Strategy_Plot_By_Stoch_Pop_For_Stock , \
+    Strategy_Plot_By_Stoch_Pop_For_Index, stoch_cross_level_list_bull, \
+    stoch_cross_level_watch_list_bull, stoch_golden_cross_list_bull, \
+    stoch_golden_cross_watch_list_bull, stoch_cross_level_list_bear, \
+    stoch_cross_level_watch_list_bear, stoch_death_cross_list_bear, \
+    stoch_death_cross_watch_list_bear
 from warrant_app.utils.warrant_util import check_if_warrant_item, to_dict
 
 
@@ -65,72 +71,70 @@ logger = logging.getLogger('warrant_app.cronjob')
 #     Twse_Trading_Warrant.objects.bulk_create(items_to_create)
 #     
 
-#below function is used to insert 'IX0001','IX0027', 'IX0039' index_change_info data into twse_trading
-# only run once
-def update_twse_trading_for_index():
-    check_list=[]
-    stocks=Stock_Item.objects.all()
-    for stock in stocks:
-        if not stock.twse_trading_list.exists():
-            check_list.append(stock)
-    strategy_objects_to_save=[]
-    for item in check_list:
-        if item.symbol=='IX0001':
-            #IX0001 stock symbol is 'IDXWT' index wearn symbol
-            index_item=Index_Item.objects.get(wearn_symbol='IDXWT')
-        elif item.symbol=='IX0027':
-            # IX0027 is 'IDX23'
-            index_item=Index_Item.objects.get(wearn_symbol='IDX23')
-        elif item.symbol=='IX0039':
-            # IX0039 is 'IDX28'
-            index_item=Index_Item.objects.get(wearn_symbol='IDX28')
-        else:
-            index_item=None
-        if index_item:
-            ici_list=index_item.index_change_list.all()
-            for ici_item in ici_list:
-                trading_item=Twse_Trading()
-                trading_item.stock_symbol=item
-                trading_item.trading_date=ici_item.trading_date
-                trading_item.trade_value=ici_item.trade_value
-                trading_item.opening_price=ici_item.opening_price
-                trading_item.highest_price=ici_item.highest_price
-                trading_item.lowest_price=ici_item.lowest_price
-                trading_item.closing_price=ici_item.closing_price
-                trading_item.price_change=ici_item.change
-                trading_item.save()
-                #create strategy object
-                tts = Twse_Trading_Strategy()
-                tts.trading = trading_item
-                tts.trading_date = trading_item.trading_date
-                tts.stock_symbol= trading_item.stock_symbol
-                strategy_objects_to_save.append(tts)     
-                    
-            #
-    Twse_Trading_Strategy.objects.bulk_create(strategy_objects_to_save)
-    
-    
+# below function is used to insert 'IX0001','IX0027', 'IX0039' index_change_info data into twse_trading
+# only run once so comment out
+# def update_twse_trading_for_index():
+#     check_list=[]
+#     stocks=Stock_Item.objects.all()
+#     for stock in stocks:
+#         if not stock.twse_trading_list.exists():
+#             check_list.append(stock)
+#     strategy_objects_to_save=[]
+#     for item in check_list:
+#         if item.symbol=='IX0001':
+#             #IX0001 stock symbol is 'IDXWT' index wearn symbol
+#             index_item=Index_Item.objects.get(wearn_symbol='IDXWT')
+#         elif item.symbol=='IX0027':
+#             # IX0027 is 'IDX23'
+#             index_item=Index_Item.objects.get(wearn_symbol='IDX23')
+#         elif item.symbol=='IX0039':
+#             # IX0039 is 'IDX28'
+#             index_item=Index_Item.objects.get(wearn_symbol='IDX28')
+#         else:
+#             index_item=None
+#         if index_item:
+#             ici_list=index_item.index_change_list.all()
+#             for ici_item in ici_list:
+#                 trading_item=Twse_Trading()
+#                 trading_item.stock_symbol=item
+#                 trading_item.trading_date=ici_item.trading_date
+#                 trading_item.trade_value=ici_item.trade_value
+#                 trading_item.opening_price=ici_item.opening_price
+#                 trading_item.highest_price=ici_item.highest_price
+#                 trading_item.lowest_price=ici_item.lowest_price
+#                 trading_item.closing_price=ici_item.closing_price
+#                 trading_item.price_change=ici_item.change
+#                 trading_item.save()
+#                 #create strategy object
+#                 tts = Twse_Trading_Strategy()
+#                 tts.trading = trading_item
+#                 tts.trading_date = trading_item.trading_date
+#                 tts.stock_symbol= trading_item.stock_symbol
+#                 strategy_objects_to_save.append(tts)     
+#     Twse_Trading_Strategy.objects.bulk_create(strategy_objects_to_save)
     
 def download_twse_various_index_job(year=None, month_list=None):
     # This job is used to download various twse index (open,high, low, close) from wearn site 
+    # and save into Index_Change_Info table, assuming Index_Change_Info entries are already existed.
+    # It also copies 'IX0001', 'IX0027', 'IX0039' data into Twse_Trading table
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
     job.title = download_twse_various_index_job.__name__ 
     try:    
-        last_data_date=Index_Change_Info.objects.get_last_trading_date_for_trade_value()
+        last_data_date = Index_Change_Info.objects.get_last_trading_date_for_trade_value()
         today = datetime.date.today()
         if not year:
-            #default: this year
+            # default: this year
             year = today.year
         if not month_list:
             month_list = []
             month_list.append(today.month)
         # need stock object references for symbols 'IX0001', 'IX0027', 'IX0039' for inserting twse_trading entries in DB 
-        stock_IX0001=Stock_Item.objects.get(symbol='IX0001')
-        stock_IX0027=Stock_Item.objects.get(symbol='IX0027')
-        stock_IX0039=Stock_Item.objects.get(symbol='IX0039')
-        strategy_objects_to_save=[]
+        stock_IX0001 = Stock_Item.objects.get(symbol='IX0001')
+        stock_IX0027 = Stock_Item.objects.get(symbol='IX0027')
+        stock_IX0039 = Stock_Item.objects.get(symbol='IX0039')
+        strategy_objects_to_save = []
         # the year parameter is in ROC year , month with 2 digits
         for n in month_list:
             if n < 10:
@@ -138,12 +142,12 @@ def download_twse_various_index_job(year=None, month_list=None):
             else:
                 month = n
                 #
-            index_list=Index_Item.objects.get_index_with_wearn_symbol()
+            index_list = Index_Item.objects.get_index_with_wearn_symbol()
             for index_entry in index_list:
-                index_symbol=index_entry.wearn_symbol
+                index_symbol = index_entry.wearn_symbol
                 try:        
                     serviceUrl = 'http://stock.wearn.com/adata.asp?Year=%s&month=%s&kind=%s' % (roc_year(year) , month, index_symbol)
-                    #print serviceUrl
+                    # print serviceUrl
                     httpResponse = requests.get(serviceUrl)
                     httpResponse.encoding = "big5"
                 except requests.HTTPError, e:
@@ -154,13 +158,13 @@ def download_twse_various_index_job(year=None, month_list=None):
                 div_element = soup.find('div', class_='stockalllist')
                 table_element = div_element.find('table')
                 tr_list = table_element.find_all('tr')
-                #skip 2 rows
+                # skip 2 rows
                 for j, row in enumerate(tr_list[2:]): 
-                    ici_item=None
+                    ici_item = None
                     for i, td_element in enumerate(row.find_all('td', recursive=False)):
                         dt_data = td_element.string.strip()
                         # dt_data contains some &nbsp; characters, need to remove them
-                        dt_data=dt_data.replace('&nbsp;', '')
+                        dt_data = dt_data.replace('&nbsp;', '')
                         if i == 0:
                             trading_date = roc_year_to_western(dt_data)
                             # if data's trading_date is before last_data_date, skip it.
@@ -180,62 +184,62 @@ def download_twse_various_index_job(year=None, month_list=None):
 #                         elif i == 4:
 #                             ici_item.closing_price = float(dt_data.replace(',', ''))   
                         elif i == 5:
-                            ici_item.trade_value = float(dt_data.replace(',', ''))*1000  
+                            ici_item.trade_value = float(dt_data.replace(',', '')) * 1000  
                     if ici_item:
                         ici_item.save()
                         # if index_symbol is 'IDXWT', 'IDX23', 'IDX28' --> create twse_trading items in DB
-                        if index_symbol=="IDXWT":                          
-                            trading_item=Twse_Trading()
-                            trading_item.stock_symbol=stock_IX0001
-                            trading_item.trading_date=ici_item.trading_date
-                            trading_item.trade_value=ici_item.trade_value
-                            trading_item.opening_price=ici_item.opening_price
-                            trading_item.highest_price=ici_item.highest_price
-                            trading_item.lowest_price=ici_item.lowest_price
-                            trading_item.closing_price=ici_item.closing_price
-                            trading_item.price_change=ici_item.change
+                        if index_symbol == "IDXWT":                          
+                            trading_item = Twse_Trading()
+                            trading_item.stock_symbol = stock_IX0001
+                            trading_item.trading_date = ici_item.trading_date
+                            trading_item.trade_value = ici_item.trade_value
+                            trading_item.opening_price = ici_item.opening_price
+                            trading_item.highest_price = ici_item.highest_price
+                            trading_item.lowest_price = ici_item.lowest_price
+                            trading_item.closing_price = ici_item.closing_price
+                            trading_item.price_change = ici_item.change
                             trading_item.save()
-                            #create strategy object
+                            # create strategy object
                             tts = Twse_Trading_Strategy()
                             tts.trading = trading_item
                             tts.trading_date = trading_item.trading_date
-                            tts.stock_symbol= trading_item.stock_symbol
+                            tts.stock_symbol = trading_item.stock_symbol
                             strategy_objects_to_save.append(tts)
-                        elif index_symbol=="IDX23":                          
-                            trading_item=Twse_Trading()
-                            trading_item.stock_symbol=stock_IX0027
-                            trading_item.trading_date=ici_item.trading_date
-                            trading_item.trade_value=ici_item.trade_value
-                            trading_item.opening_price=ici_item.opening_price
-                            trading_item.highest_price=ici_item.highest_price
-                            trading_item.lowest_price=ici_item.lowest_price
-                            trading_item.closing_price=ici_item.closing_price
-                            trading_item.price_change=ici_item.change
+                        elif index_symbol == "IDX23":                          
+                            trading_item = Twse_Trading()
+                            trading_item.stock_symbol = stock_IX0027
+                            trading_item.trading_date = ici_item.trading_date
+                            trading_item.trade_value = ici_item.trade_value
+                            trading_item.opening_price = ici_item.opening_price
+                            trading_item.highest_price = ici_item.highest_price
+                            trading_item.lowest_price = ici_item.lowest_price
+                            trading_item.closing_price = ici_item.closing_price
+                            trading_item.price_change = ici_item.change
                             trading_item.save()
-                            #create strategy object
+                            # create strategy object
                             tts = Twse_Trading_Strategy()
                             tts.trading = trading_item
                             tts.trading_date = trading_item.trading_date
-                            tts.stock_symbol= trading_item.stock_symbol
+                            tts.stock_symbol = trading_item.stock_symbol
                             strategy_objects_to_save.append(tts)
-                        elif index_symbol=="IDX28":                          
-                            trading_item=Twse_Trading()
-                            trading_item.stock_symbol=stock_IX0039
-                            trading_item.trading_date=ici_item.trading_date
-                            trading_item.trade_value=ici_item.trade_value
-                            trading_item.opening_price=ici_item.opening_price
-                            trading_item.highest_price=ici_item.highest_price
-                            trading_item.lowest_price=ici_item.lowest_price
-                            trading_item.closing_price=ici_item.closing_price
-                            trading_item.price_change=ici_item.change
+                        elif index_symbol == "IDX28":                          
+                            trading_item = Twse_Trading()
+                            trading_item.stock_symbol = stock_IX0039
+                            trading_item.trading_date = ici_item.trading_date
+                            trading_item.trade_value = ici_item.trade_value
+                            trading_item.opening_price = ici_item.opening_price
+                            trading_item.highest_price = ici_item.highest_price
+                            trading_item.lowest_price = ici_item.lowest_price
+                            trading_item.closing_price = ici_item.closing_price
+                            trading_item.price_change = ici_item.change
                             trading_item.save()
-                            #create strategy object
+                            # create strategy object
                             tts = Twse_Trading_Strategy()
                             tts.trading = trading_item
                             tts.trading_date = trading_item.trading_date
-                            tts.stock_symbol= trading_item.stock_symbol
+                            tts.stock_symbol = trading_item.stock_symbol
                             strategy_objects_to_save.append(tts)
-        if len(strategy_objects_to_save)>0: 
+        if len(strategy_objects_to_save) > 0: 
             Twse_Trading_Strategy.objects.bulk_create(strategy_objects_to_save)
 #
         transaction.commit()
@@ -252,6 +256,7 @@ def download_twse_various_index_job(year=None, month_list=None):
         transaction.set_autocommit(True)
         
 def download_twse_index_stats_job(year=None, month_list=None):
+    # 發行量加權股價指數歷史資料(日期    開盤指數    最高指數    最低指數    收盤指數)
     # this job is used to download twse index open,high, low, close index
     # as well as create Trading_Date entry
     _CREATE_TRADING_DATE_OBJECT = True
@@ -265,7 +270,7 @@ def download_twse_index_stats_job(year=None, month_list=None):
             last_trading_date = Trading_Date.objects.get_last_trading_date()
         today = datetime.date.today()
         if not year:
-            #default: this year
+            # default: this year
             year = today.year
         if not month_list:
             month_list = []
@@ -287,6 +292,9 @@ def download_twse_index_stats_job(year=None, month_list=None):
             
             soup = BeautifulSoup(httpResponse.text, 'lxml')
             table_element = soup.find('table', class_='board_trad')
+            if not table_element:
+                logger.warning("No index trading data available!")
+                continue
             tr_list = table_element.find_all('tr', class_='gray12')
             trading_date_to_create = []
             twse_index_stats_to_create = []
@@ -339,6 +347,7 @@ def download_twse_index_stats_job(year=None, month_list=None):
         job.save()
 
 def download_twse_index_stats2_job(year=None, month_list=None):
+    # 市場成交資訊(日期,成交股數,成交金額,成交筆數,發行量加權股價指數,漲跌點數)
     # this job is used to update Twse_Index_Stats's 
     # trade_volume, trade_transaction, trade_value data.
     # Need to be run after download_twse_index_stats_job
@@ -348,13 +357,13 @@ def download_twse_index_stats2_job(year=None, month_list=None):
     try:  
         today = datetime.date.today()
         if not year:
-            #default: this year
+            # default: this year
             year = today.year
         if not month_list:
             month_list = []
             month_list.append(today.month)
             
-        # the year parameter is in ROC year , month with 2 digits
+        # the year parameter is in western year , month with 2 digits
         for n in month_list:
             if n < 10:
                 month = "0%s" % n
@@ -370,6 +379,9 @@ def download_twse_index_stats2_job(year=None, month_list=None):
             
             soup = BeautifulSoup(httpResponse.text, 'lxml')
             table_element = soup.find('table', class_='board_trad')
+            if not table_element: 
+                logger.warning("No index trading data available!")
+                continue
             tr_list = table_element.find_all('tr', class_='basic2')
             twse_index_stats_to_update = []
             j = 0
@@ -407,7 +419,7 @@ def download_twse_index_stats2_job(year=None, month_list=None):
         job.save()
         
 def twse_index_avg_calc_job():
-    #This job will calculate average index(5,10,20.60,120,240-day) and trade_value(240-day)
+    # This job will calculate average index(5,10,20,60,120,240-day) and trade_value(240-day)
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
@@ -420,7 +432,7 @@ def twse_index_avg_calc_job():
                 # get prices by descending order on 'trading_date'
                 price_value_list = Twse_Index_Stats.objects.price_value_lte_date(item.trading_date).order_by('-trading_date')[:240]
                 price_value_list_count = len(price_value_list)
-                #
+#
                 fieldname_list = ['week_avg', 'two_week_avg', 'month_avg', 'quarter_avg', 'half_avg', 'year_avg']
                 DAY_AVERAGE_LIST = [5, 10, 20, 60, 120, 240]
                 for fieldname, DAY_AVERAGE in zip(fieldname_list, DAY_AVERAGE_LIST):
@@ -430,10 +442,10 @@ def twse_index_avg_calc_job():
                         # calc avg
                         avg_price = np.average(np.array([float(price_value_pair[0]) for price_value_pair in price_value_list[:DAY_AVERAGE]]))
                         setattr(item, fieldname, avg_price) 
-                #calculate avg trade value of 240-day
+                # calculate avg trade value of 240-day
                 if price_value_list_count == 240:
-                    avg_vol = np.average(np.array([float(price_value_pair[1]) for price_value_pair in price_value_list]))
-                    setattr(item, 'year_value_avg', avg_vol) 
+                    avg_val = np.average(np.array([float(price_value_pair[1]) for price_value_pair in price_value_list]))
+                    setattr(item, 'year_value_avg', avg_val) 
                 item.save()                       
         else:
             # this will recalc all avg values for all Twse_Index_Stats entries in DB
@@ -455,9 +467,9 @@ def twse_index_avg_calc_job():
                 # update fields
                 for item, price in zip(items[DAY_AVERAGE - 1:], avg_array):
                     setattr(item, fieldname, price) 
-            #update average trade value of 240-day
+            # update average trade value of 240-day
             trade_value_array = np.array(trade_value_list)
-            if trade_value_array.size>=240:
+            if trade_value_array.size >= 240:
                 avg_trade_value_array = moving_avg(trade_value_array, 240)
                 for item, avg_vol in zip(items[240 - 1:], avg_trade_value_array):
                     setattr(item, 'year_value_avg', avg_vol)                
@@ -476,8 +488,84 @@ def twse_index_avg_calc_job():
         transaction.commit()
         transaction.set_autocommit(True)
 
+def twse_various_index_avg_calc_job():
+    # This job calculates average index(5,10,20, 60,120,240-day) and trade_value(240-day) 
+    # for various index in Index_Item with wearn_symbol (ie. there is min/max price data available in Index_Change_Info)
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = twse_various_index_avg_calc_job.__name__ 
+    UPDATE_MODE = True 
+    try:
+        if UPDATE_MODE:
+            index_items = Index_Item.objects.get_index_with_wearn_symbol()
+            for index_entry in index_items:
+                missing_items = index_entry.index_change_list.get_missing_avg().order_by('trading_date')
+#                
+                for item in missing_items:
+                    # get prices by descending order on 'trading_date'
+                    price_value_list = index_entry.index_change_list.price_value_lte_date(item.trading_date).order_by('-trading_date')[:240]
+                    price_value_list_count = len(price_value_list)
+#
+                    fieldname_list = ['week_avg', 'two_week_avg', 'month_avg', 'quarter_avg', 'half_avg', 'year_avg']
+                    DAY_AVERAGE_LIST = [5, 10, 20, 60, 120, 240]
+                    for fieldname, DAY_AVERAGE in zip(fieldname_list, DAY_AVERAGE_LIST):
+                        if price_value_list_count < DAY_AVERAGE:
+                            break
+                        else:
+                            # calc avg
+                            avg_price = np.average(np.array([float(price_value_pair[0]) for price_value_pair in price_value_list[:DAY_AVERAGE]]))
+                            setattr(item, fieldname, avg_price) 
+                    # calculate avg trade value of 240-day
+                    if price_value_list_count == 240:
+                        avg_val = np.average(np.array([float(price_value_pair[1]) for price_value_pair in price_value_list]))
+                        
+                        setattr(item, 'year_value_avg', avg_val) 
+                    item.save()                       
+        else:
+            # this will recalc all avg values for all Index_Change_Info entries in DB
+            index_items = Index_Item.objects.get_index_with_wearn_symbol()
+            for index_entry in index_items:
+                items = index_entry.index_change_list.all().order_by('trading_date')
+                price_list = []
+                trade_value_list = []
+                for item in items:
+                    price_list.append(float(item.closing_price))
+                    trade_value_list.append(float(item.trade_value))
+                    
+                price_array = np.array(price_list) 
+                fieldname_list = ['week_avg', 'two_week_avg', 'month_avg', 'quarter_avg', 'half_avg', 'year_avg']
+                DAY_AVERAGE_LIST = [5, 10, 20, 60, 120, 240]
+                for fieldname, DAY_AVERAGE in zip(fieldname_list, DAY_AVERAGE_LIST):
+                    try:
+                        avg_array = moving_avg(price_array, DAY_AVERAGE)
+                    except:
+                        break
+                    # update fields
+                    for item, price in zip(items[DAY_AVERAGE - 1:], avg_array):
+                        setattr(item, fieldname, price) 
+                # update average trade value of 240-day
+                trade_value_array = np.array(trade_value_list)
+                if trade_value_array.size >= 240:
+                    avg_trade_value_array = moving_avg(trade_value_array, 240)
+                    for item, avg_vol in zip(items[240 - 1:], avg_trade_value_array):
+                        setattr(item, 'year_value_avg', avg_vol)                
+                for item in items:
+                    item.save()
+        transaction.commit()
+        job.success()
+    except: 
+        print traceback.format_exc()
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
 def twse_stock_price_volume_avg_calc_job():
-    #This job is used to calculate average price for week, 2-week, month, quarter, half year, year period.
+    # This job is used to calculate average price for week, 2-week, month, quarter, half year, year period.
     # It also calculate the year average of trade volume.
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
@@ -494,7 +582,7 @@ def twse_stock_price_volume_avg_calc_job():
                     # get prices by descending order on 'trading_date'
                     price_volume_list = stock.twse_trading_list.price_volume_lte_date(item.trading_date).order_by('-trading_date')[:240]
                     price_volume_list_count = len(price_volume_list)
- #
+#
                     fieldname_list = ['week_avg', 'two_week_avg', 'month_avg', 'quarter_avg', 'half_avg', 'year_avg']
                     DAY_AVERAGE_LIST = [5, 10, 20, 60, 120, 240]
                     for fieldname, DAY_AVERAGE in zip(fieldname_list, DAY_AVERAGE_LIST):
@@ -504,7 +592,7 @@ def twse_stock_price_volume_avg_calc_job():
                             # calc avg
                             avg_price = np.average(np.array([float(price_volume_pair[0]) for price_volume_pair in price_volume_list[:DAY_AVERAGE]]))
                             setattr(item, fieldname, avg_price) 
-                    #calculate avg year volume
+                    # calculate avg year volume
                     if price_volume_list_count == 240:
                         avg_vol = np.average(np.array([float(price_volume_pair[1]) for price_volume_pair in price_volume_list]))
                         setattr(item, 'year_volume_avg', avg_vol)
@@ -532,7 +620,7 @@ def twse_stock_price_volume_avg_calc_job():
                     # update fields
                     for item, price in zip(items[DAY_AVERAGE - 1:], avg_array):
                         setattr(item, fieldname, price) 
-                #calculate avg volume
+                # calculate avg volume
                 volume_array = np.array(volume_list) 
                 if volume_array.size >= 240:
                     avg_vol_array = moving_avg(volume_array, 240)
@@ -570,7 +658,7 @@ def twse_stock_calc_stoch_osci_adx_job():
     try:
         if UPDATE_MODE:
             stock_items = Stock_Item.objects.all()
-            #stock_items = Stock_Item.objects.filter(symbol='3008')
+            # stock_items = Stock_Item.objects.filter(symbol='3008')
             for stock in stock_items:
                 # calculate 14-day stochastic oscillator
                 # parameters
@@ -581,8 +669,6 @@ def twse_stock_calc_stoch_osci_adx_job():
                 is_exist = stock.twse_trading_list.filter(strategy__fourteen_day_k__isnull=False).exists()
                 if is_exist: 
                     last_not_null = stock.twse_trading_list.filter(strategy__fourteen_day_k__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]                
-                    
-                    #print "last_not_null=%s" % last_not_null
                     # get the starting date after which their trading data are needed to update stoch_osci values for new trading data
                     n = LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3
                     start_date = stock.twse_trading_list.filter(trading_date__lte=last_not_null).values_list('trading_date', flat=True).order_by('-trading_date')[n - 1]
@@ -593,11 +679,10 @@ def twse_stock_calc_stoch_osci_adx_job():
                     items = stock.twse_trading_list.all().select_related('strategy').order_by('trading_date') 
                 # do the calculation                            
                 try:                    
-                    strategy_items_to_update = calc_stochastic_oscillator_for_stock(stock, 
-                                                                                      trading_item_list=items, 
-                                                                                      LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, 
-                                                                                      K_SMOOTHING=K_SMOOTHING, 
-                                                                                      D_MOVING_AVERAGE=D_MOVING_AVERAGE)                                    
+                    strategy_items_to_update = calc_stochastic_oscillator(input_list=items,
+                                                                          LOOK_BACK_PERIOD=LOOK_BACK_PERIOD,
+                                                                          K_SMOOTHING=K_SMOOTHING,
+                                                                          D_MOVING_AVERAGE=D_MOVING_AVERAGE)                                    
                 except:
                     logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, stock.id))
                     print traceback.format_exc()
@@ -619,26 +704,25 @@ def twse_stock_calc_stoch_osci_adx_job():
                 else:
                     items = stock.twse_trading_list.all().select_related('strategy').order_by('trading_date')                             
                 try:                    
-                    strategy_items_to_update = calc_stochastic_oscillator_for_stock(stock, 
-                                                                                      trading_item_list=items, 
-                                                                                      LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, 
-                                                                                      K_SMOOTHING=K_SMOOTHING, 
-                                                                                      D_MOVING_AVERAGE=D_MOVING_AVERAGE)
+                    strategy_items_to_update = calc_stochastic_oscillator(input_list=items,
+                                                                          LOOK_BACK_PERIOD=LOOK_BACK_PERIOD,
+                                                                          K_SMOOTHING=K_SMOOTHING,
+                                                                          D_MOVING_AVERAGE=D_MOVING_AVERAGE)
                 except:
                     logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, stock.id))
                     print traceback.format_exc()
                     continue                                        
                 for item in strategy_items_to_update:
                     item.save()
-                #calculate ADX
+                # calculate ADX
                 SMOOTHING_FACTOR = 14  
                 is_exist = stock.twse_trading_list.filter(strategy__adx__isnull=False).exists()
                 if is_exist: 
                     last_not_null = stock.twse_trading_list.filter(strategy__adx__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]
-                    start_date=last_not_null
+                    start_date = last_not_null
                     items = stock.twse_trading_list.filter(trading_date__gte=start_date).select_related('strategy').order_by('trading_date')   
                     try:                    
-                        strategy_items_to_update = update_di_adx_for_stock(stock, trading_item_list=items, SMOOTHING_FACTOR=SMOOTHING_FACTOR)                
+                        strategy_items_to_update = update_di_adx(input_list=items, SMOOTHING_FACTOR=SMOOTHING_FACTOR)                
                     except:
                         print traceback.format_exc()
                         logger.warning("Error when calculating average directional index with for stock pk= %s" % stock.id)
@@ -649,7 +733,7 @@ def twse_stock_calc_stoch_osci_adx_job():
                 else:
                     items = stock.twse_trading_list.all().select_related('strategy').order_by('trading_date')   
                     try:
-                        strategy_items_to_update = recalc_all_di_adx_for_stock(stock, trading_item_list=items, SMOOTHING_FACTOR=SMOOTHING_FACTOR)
+                        strategy_items_to_update = recalc_all_di_adx(input_list=items, SMOOTHING_FACTOR=SMOOTHING_FACTOR)
                     except:
                         print traceback.format_exc()
                         logger.warning("Error when calculating average directional index with for stock pk= %s" % stock.id)
@@ -660,7 +744,6 @@ def twse_stock_calc_stoch_osci_adx_job():
             # this will recalc all stoch_osci and ADX values for all Twse_trading entries in DB
             # first get all stock_items
             stock_items = Stock_Item.objects.all()
-            # stock_items = Stock_Item.objects.filter(symbol='2312')
             for stock in stock_items:
                 # Use a set here to store strategy items needed for update (for dealing duplicates)
                 strategy_items_to_update = set()
@@ -670,8 +753,8 @@ def twse_stock_calc_stoch_osci_adx_job():
                     LOOK_BACK_PERIOD = 14
                     K_SMOOTHING = 3
                     D_MOVING_AVERAGE = 3
-                    result = calc_stochastic_oscillator_for_stock(stock, trading_item_list=items, LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, K_SMOOTHING=K_SMOOTHING, D_MOVING_AVERAGE=D_MOVING_AVERAGE)    
-                    #result is a list            
+                    result = calc_stochastic_oscillator(input_list=items, LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, K_SMOOTHING=K_SMOOTHING, D_MOVING_AVERAGE=D_MOVING_AVERAGE)    
+                    # result is a list            
                     strategy_items_to_update.update(set(result))
                 except:
                     logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, stock.id))
@@ -682,7 +765,7 @@ def twse_stock_calc_stoch_osci_adx_job():
                     LOOK_BACK_PERIOD = 70
                     K_SMOOTHING = 3
                     D_MOVING_AVERAGE = 3
-                    result = calc_stochastic_oscillator_for_stock(stock, trading_item_list=items, LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, K_SMOOTHING=K_SMOOTHING, D_MOVING_AVERAGE=D_MOVING_AVERAGE)                
+                    result = calc_stochastic_oscillator(input_list=items, LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, K_SMOOTHING=K_SMOOTHING, D_MOVING_AVERAGE=D_MOVING_AVERAGE)                
                     strategy_items_to_update.update(set(result))
                 except:
                     logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, stock.id)) 
@@ -691,7 +774,7 @@ def twse_stock_calc_stoch_osci_adx_job():
                 # calculate +DI14, -DI14, ADX for each trading date
                 try:                    
                     SMOOTHING_FACTOR = 14                        
-                    result = recalc_all_di_adx_for_stock(stock, trading_item_list=items, SMOOTHING_FACTOR=SMOOTHING_FACTOR)
+                    result = recalc_all_di_adx(input_list=items, SMOOTHING_FACTOR=SMOOTHING_FACTOR)
                     strategy_items_to_update.update(set(result))
                 except:
                     logger.warning("Error when calculating average directional index with for stock pk= %s" % stock.id)
@@ -714,7 +797,162 @@ def twse_stock_calc_stoch_osci_adx_job():
         transaction.commit()
         transaction.set_autocommit(True)
 
-        
+       
+def twse_various_index_calc_stoch_osci_adx_job():
+# This job is for calculating stochastic oscillator(long term(70-day and short term(14-day)) and ADX values
+# for each Index_Change_Info entry
+# Two modes are implemented. 
+# 1. 'all' mode: recalculate the stoch_osci and ADX values for all Index_Change_Info data. 
+# This mode is for first time and only need to run once.
+# 2. 'update' mode: calculate any missing stoch_osci and ADX values once new  Index_Change_Info is available.
+# This mode can be run frequently or daily. 
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = twse_various_index_calc_stoch_osci_adx_job.__name__ 
+    UPDATE_MODE = True 
+    try:
+        if UPDATE_MODE:
+            index_items = Index_Item.objects.get_index_with_wearn_symbol()
+            for index_entry in index_items:    
+                # calculate 14-day stochastic oscillator
+                # parameters
+                LOOK_BACK_PERIOD = 14
+                K_SMOOTHING = 3
+                D_MOVING_AVERAGE = 3
+                # first get the last trading_date which has the fourteen_day_k calculated
+                is_exist = index_entry.index_change_list.filter(fourteen_day_k__isnull=False).exists()
+                if is_exist: 
+                    last_not_null = index_entry.index_change_list.filter(fourteen_day_k__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]
+                    # get the starting date after which their trading data are needed to update stoch_osci values for new trading data
+                    n = LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3
+                    start_date = index_entry.index_change_list.filter(trading_date__lte=last_not_null).values_list('trading_date', flat=True).order_by('-trading_date')[n - 1]
+                    # get index_change items  
+                    items = index_entry.index_change_list.filter(trading_date__gte=start_date).order_by('trading_date')     
+                else:
+                    # no fourteen_day_k data previously, so back to the 'all' mode                   
+                    items = index_entry.index_change_list.all().order_by('trading_date')      
+                # do the calculation                            
+                try:                    
+                    strategy_items_to_update = calc_stochastic_oscillator(input_list=items,
+                                                                          LOOK_BACK_PERIOD=LOOK_BACK_PERIOD,
+                                                                          K_SMOOTHING=K_SMOOTHING,
+                                                                          D_MOVING_AVERAGE=D_MOVING_AVERAGE)                                    
+                except:
+                    logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, index_entry.id))
+                    print traceback.format_exc()
+                    # continue for the next stock
+                    continue  
+                # update model in DB    
+                for item in strategy_items_to_update:
+                    item.save()
+                # calculate 70-day stoch osci with the same logic as 14-day one
+                LOOK_BACK_PERIOD = 70
+                K_SMOOTHING = 3
+                D_MOVING_AVERAGE = 3
+                is_exist = index_entry.index_change_list.filter(seventy_day_k__isnull=False).exists()
+                if is_exist: 
+                    last_not_null = index_entry.index_change_list.filter(seventy_day_k__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]
+                    n = LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3
+                    start_date = index_entry.index_change_list.filter(trading_date__lte=last_not_null).values_list('trading_date', flat=True).order_by('-trading_date')[n - 1]
+                    items = index_entry.index_change_list.filter(trading_date__gte=start_date).order_by('trading_date')     
+                else:
+                    items = index_entry.index_change_list.all().order_by('trading_date')                             
+                try:                    
+                    strategy_items_to_update = calc_stochastic_oscillator(input_list=items,
+                                                                          LOOK_BACK_PERIOD=LOOK_BACK_PERIOD,
+                                                                          K_SMOOTHING=K_SMOOTHING,
+                                                                          D_MOVING_AVERAGE=D_MOVING_AVERAGE)
+                except:
+                    logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, index_entry.id))
+                    print traceback.format_exc()
+                    continue                                        
+                for item in strategy_items_to_update:
+                    item.save()
+                # calculate ADX
+                SMOOTHING_FACTOR = 14  
+                is_exist = index_entry.index_change_list.filter(adx__isnull=False).exists()
+                if is_exist: 
+                    last_not_null = index_entry.index_change_list.filter(adx__isnull=False).values_list('trading_date', flat=True).order_by('-trading_date')[0]
+                    start_date = last_not_null
+                    items = index_entry.index_change_list.filter(trading_date__gte=start_date).order_by('trading_date')   
+                    try:                    
+                        strategy_items_to_update = update_di_adx(input_list=items, SMOOTHING_FACTOR=SMOOTHING_FACTOR)                
+                    except:
+                        print traceback.format_exc()
+                        logger.warning("Error when calculating average directional index with for stock pk= %s" % index_entry.id)
+                        continue  
+                                                              
+                    for item in strategy_items_to_update:
+                        item.save()
+                else:
+                    items = index_entry.index_change_list.all().order_by('trading_date')   
+                    try:
+                        strategy_items_to_update = recalc_all_di_adx(input_list=items, SMOOTHING_FACTOR=SMOOTHING_FACTOR)
+                    except:
+                        print traceback.format_exc()
+                        logger.warning("Error when calculating average directional index with for stock pk= %s" % index_entry.id)
+                        continue
+                    for item in strategy_items_to_update:
+                        item.save()
+        else:
+            # this will recalc all stoch_osci and ADX values for all Index_Change_Info entries in DB
+            # first get all index items with wearn symbol(ie. has min/max price data)
+            index_items = Index_Item.objects.get_index_with_wearn_symbol()
+            for index_entry in index_items:
+                items = index_entry.index_change_list.all().order_by('trading_date')
+                
+                # Use a set here to store items needed for update (for dealing duplicates)
+                strategy_items_to_update = set()
+                # 14-day stochastic oscillator
+                try:
+                    LOOK_BACK_PERIOD = 14
+                    K_SMOOTHING = 3
+                    D_MOVING_AVERAGE = 3
+                    result = calc_stochastic_oscillator(input_list=items, LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, K_SMOOTHING=K_SMOOTHING, D_MOVING_AVERAGE=D_MOVING_AVERAGE)    
+                    # result is a list            
+                    strategy_items_to_update.update(set(result))
+                except:
+                    logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, index_entry.id))
+                    print traceback.format_exc()
+                    continue
+                # 70-day stochastic oscillator
+                try:                   
+                    LOOK_BACK_PERIOD = 70
+                    K_SMOOTHING = 3
+                    D_MOVING_AVERAGE = 3
+                    result = calc_stochastic_oscillator(input_list=items, LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, K_SMOOTHING=K_SMOOTHING, D_MOVING_AVERAGE=D_MOVING_AVERAGE)                
+                    strategy_items_to_update.update(set(result))
+                except:
+                    logger.warning("Error when calculating stochastic_oscillator with parameters(%s,%s,%s) for stock pk= %s" % (LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE, index_entry.id)) 
+                    print traceback.format_exc()                   
+                    continue
+                # calculate +DI14, -DI14, ADX for each trading date
+                try:                    
+                    SMOOTHING_FACTOR = 14                        
+                    result = recalc_all_di_adx(input_list=items, SMOOTHING_FACTOR=SMOOTHING_FACTOR)
+                    strategy_items_to_update.update(set(result))
+                except:
+                    logger.warning("Error when calculating average directional index with for stock pk= %s" % index_entry.id)
+                    print traceback.format_exc()
+                    continue
+                # update tts
+                for item in strategy_items_to_update:
+                    item.save()
+                
+        transaction.commit()
+        job.success()
+    except: 
+        print traceback.format_exc()
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+
 def twse_manage_stock_info_job():
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
@@ -2021,7 +2259,7 @@ def twse_black_scholes_calc_job():
         transaction.set_autocommit(True)
 
 def _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry):
-    #logger.info("***Processing trading warrant : %s" % trading_warrant_entry.id)
+    # logger.info("***Processing trading warrant : %s" % trading_warrant_entry.id)
     exercise_ratio = warrant_item.exercise_ratio * 1.0 / 1000.0
     spot_price = float(stock_trading_entry.last_best_bid_price)
     # default use last_best_bid_price for bs calculation, if not available then use closing_price
@@ -2041,7 +2279,7 @@ def _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry):
     if option_price <= 0.0:
         raise Exception("Warrant price is %s" % option_price)
 #
-    #logger.info("exercise_ratio=%s, spot_price=%s,  strike_price=%s, diff=%s, time_to_maturity=%s, warrant_price=%s" % (exercise_ratio, spot_price, strike_price, diff, time_to_maturity, option_price))
+    # logger.info("exercise_ratio=%s, spot_price=%s,  strike_price=%s, diff=%s, time_to_maturity=%s, warrant_price=%s" % (exercise_ratio, spot_price, strike_price, diff, time_to_maturity, option_price))
     if warrant_item.is_call():
         sigma = option_price_implied_volatility_call_black_scholes_newton(
                               spot_price, strike_price, INTEREST_RATE, time_to_maturity, option_price)
@@ -2054,7 +2292,7 @@ def _calc_bs_value(trading_warrant_entry, warrant_item, stock_trading_entry):
         calc_warrant_price = option_price_put_black_scholes(spot_price, strike_price, INTEREST_RATE, sigma, time_to_maturity)
     leverage = (spot_price / option_price) * delta
     
-    #logger.info("sigma=%s, delta=%s, leverage=%s, calc_warrant_price=%s" % (sigma, delta, leverage, calc_warrant_price * exercise_ratio))
+    # logger.info("sigma=%s, delta=%s, leverage=%s, calc_warrant_price=%s" % (sigma, delta, leverage, calc_warrant_price * exercise_ratio))
 #  
     return (time_to_maturity, sigma, delta, leverage, calc_warrant_price * exercise_ratio)
     
@@ -2122,152 +2360,442 @@ def update_expired_warrant_trading_list():
         transaction.commit()
         transaction.set_autocommit(True)
 
-
-def strategy_by_stochastic_pop_drop_job(): 
+def strategy_by_stochastic_pop_drop_job(notify=True): 
     transaction.set_autocommit(False)
     log_message(datetime.datetime.now())
     job = Cron_Job_Log()
     job.title = strategy_by_stochastic_pop_drop_job.__name__ 
     try:
-        #parameters:
-        INSPECT_LATEST_DATA=True
+        # parameters:
+        INSPECT_LATEST_DATA = True
         # trading date range to inspect the k/d, adx values
-        TRADING_DATE_RANGE=3
+        TRADING_DATE_RANGE = 3
         # long k threshold
-        BULL_LONG_K_LEVEL=50
-        BULL_SHORT_K_LEVEL=80
-        BEAR_LONG_K_LEVEL=50
-        BEAR_SHORT_K_LEVEL=20
-        ADX_LEVEL=20
+        BULL_LONG_K_LEVEL = 50
+        BULL_SHORT_K_LEVEL = 80
+        BEAR_LONG_K_LEVEL = 50
+        BEAR_SHORT_K_LEVEL = 20
+        ADX_LEVEL = 20
         #
-        long_breakout_list=[]
-        short_breakout_list=[]
-        long_breakout2_list=[]
-        short_breakout2_list=[]
-        long_breakout3_list=[]
-        short_breakout3_list=[]
-        long_watch_list=[]
-        short_watch_list=[]
+        long_breakout_list = []
+        short_breakout_list = []
+        long_breakout2_list = []
+        short_breakout2_list = []
+        long_breakout3_list = []
+        short_breakout3_list = []
+        long_watch_list = []
+        short_watch_list = []
+        long_list = []
+        long_list_with_warrant = []
+        short_list = []
+        short_list_with_warrant = []
         #
-        stock_items = Stock_Item.objects.all()
+        stock_items = Stock_Item.objects.all().order_by('symbol')
         # calculate target trading date
         if INSPECT_LATEST_DATA:
             trading_date_list = Trading_Date.objects.all().values_list('trading_date', flat=True).order_by('-trading_date')[:TRADING_DATE_RANGE]
         else:
-            TARGET_TRADING_DATE='20150415'
-            ttd=convertToDate(TARGET_TRADING_DATE)
+            TARGET_TRADING_DATE = '20150429'
+            ttd = convertToDate(TARGET_TRADING_DATE)
             trading_date_list = Trading_Date.objects.filter(trading_date__lte=ttd).values_list('trading_date', flat=True).order_by('-trading_date')[:TRADING_DATE_RANGE]
             
-        target_td=trading_date_list[TRADING_DATE_RANGE-1]                 
-        directory = "ipython/stock_strategy/%s" % trading_date_list[0].strftime("%Y%m%d")
+        target_td = trading_date_list[TRADING_DATE_RANGE - 1]                 
+        date_of_interest = trading_date_list[0].strftime("%Y/%m/%d")
+        directory = "ipython/stock_strategy/stoch_osci/%s" % trading_date_list[0].strftime("%Y%m%d")
         if not os.path.exists(directory):
             os.makedirs(directory)    
-        summary_filename = "%s/summary" % directory
+        summary_filename = "%s/summary_stoch_pop.txt" % directory
+        summary_message_list = []
+        
+        summary_message_list.append("Run the target selection for %s with Stochastic Pop/Drop strategy." % trading_date_list[0])
+        for stock in stock_items: 
+            # first make sure the stocks have trading entries with non null strategy.fourteen_day_k, strategy.seventy_day_k, strategy.adx values within the trading date range
+            trading_entries = stock.twse_trading_list.filter(trading_date__gte=target_td,
+                                                             strategy__fourteen_day_k__isnull=False,
+                                                             strategy__seventy_day_k__isnull=False,
+                                                             strategy__adx__isnull=False).select_related('strategy').order_by('trading_date')
+            if not INSPECT_LATEST_DATA: 
+                trading_entries = trading_entries.filter(trading_date__lte=ttd)
+            if len(trading_entries) != TRADING_DATE_RANGE: 
+                continue 
+            data_list = [(float(entry.strategy.seventy_day_k),
+                          float(entry.strategy.seventy_day_d),
+                          float(entry.strategy.fourteen_day_k),
+                          float(entry.strategy.fourteen_day_d),
+                          float(entry.strategy.pdi14),
+                          float(entry.strategy.ndi14),
+                          float(entry.strategy.adx)) for entry in trading_entries]
+            data_array = np.asarray(data_list)
+            data_array_t = data_array.T
+            selected = False
+            if stoch_pop_pre_filtering_bull(data_array_t, BULL_LONG_K_LEVEL, ADX_LEVEL):
+                if stoch_pop_breakout_list_bull(data_array_t, BULL_SHORT_K_LEVEL):
+                    long_breakout_list.append(stock)    
+                    selected = True    
+                elif stoch_pop_breakout2_list_bull(data_array_t, BULL_SHORT_K_LEVEL):
+                    long_breakout2_list.append(stock)
+                    selected = True    
+                elif stoch_pop_breakout3_list_bull(data_array_t, BULL_SHORT_K_LEVEL):
+                    long_breakout3_list.append(stock)
+                    selected = True    
+                elif stoch_pop_watch_list_bull(data_array_t, BULL_SHORT_K_LEVEL):
+                    long_watch_list.append(stock)
+                    selected = True    
+                if selected:
+                    # check if there are 'call' warrants available for trading
+                    stock.has_warrant = stock.warrant_item_list.call_list().filter(last_trading_date__gte=trading_date_list[0]).exists()
+                    stock.last_short_k = data_array[-1][2]
+                    plot_obj = Strategy_Plot_By_Stoch_Pop_For_Stock(stock, category='stoch_pop_bull', end_date=trading_date_list[0].strftime("%Y%m%d"))
+                    fig_filename = plot_obj.do()
+                    stock.fig_filename = fig_filename
+                    if stock.has_warrant:
+                        long_list_with_warrant.append(stock)
+                    else:
+                        long_list.append(stock)
+            elif stoch_drop_pre_filtering_bear(data_array_t, BEAR_LONG_K_LEVEL, ADX_LEVEL):
+                if stoch_drop_breakout_list_bear(data_array_t, BEAR_SHORT_K_LEVEL):
+                    short_breakout_list.append(stock)
+                    selected = True
+                elif stoch_drop_breakout2_list_bear(data_array_t, BEAR_SHORT_K_LEVEL):
+                    short_breakout2_list.append(stock)
+                    selected = True    
+                elif stoch_drop_breakout3_list_bear(data_array_t, BEAR_SHORT_K_LEVEL):
+                    short_breakout3_list.append(stock)
+                    selected = True    
+                elif stoch_drop_watch_list_bear(data_array_t, BEAR_SHORT_K_LEVEL):
+                    short_watch_list.append(stock)
+                    selected = True 
+                if selected:
+                    # check if there are 'put' warrants available for trading
+                    stock.has_warrant = stock.warrant_item_list.put_list().filter(last_trading_date__gte=trading_date_list[0]).exists()
+                    stock.last_short_k = data_array[-1][2]
+                    plot_obj = Strategy_Plot_By_Stoch_Pop_For_Stock(stock, category='stoch_drop_bear', end_date=trading_date_list[0].strftime("%Y%m%d"))
+                    fig_filename = plot_obj.do()
+                    stock.fig_filename = fig_filename
+                    if stock.has_warrant:
+                        short_list_with_warrant.append(stock)
+                    else:
+                        short_list.append(stock)
+              
+        summary_message_list.append("=============================================================")  
+        summary_message_list.append("Number of bull breakout target: %s" % len(long_breakout_list))
+        for stock in long_breakout_list:                   
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                stock.short_name,
+                                                                                "***" if stock.has_warrant else "",
+                                                                                stock.last_short_k))
+        
+        summary_message_list.append("Number of bull breakout 2nd day target: %s" % len(long_breakout2_list))
+        for stock in long_breakout2_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                stock.short_name,
+                                                                                "***" if stock.has_warrant else "",
+                                                                                stock.last_short_k))   
+                         
+        summary_message_list.append("Number of bull breakout 3rd day target: %s" % len(long_breakout3_list))
+        for stock in long_breakout3_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                stock.short_name,
+                                                                                "***" if stock.has_warrant else "", stock.last_short_k))  
+                          
+        summary_message_list.append("Number of bull watch target: %s" % len(long_watch_list))
+        for stock in long_watch_list:
+            predicted_breakout_price = None
+            if INSPECT_LATEST_DATA:
+                predicted_breakout_price = predict_breakout_price(stock, BULL_SHORT_K_LEVEL)
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s), breakout price to watch=%s" % (stock.symbol,
+                                                                                                           stock.short_name,
+                                                                                                           "***" if stock.has_warrant else "",
+                                                                                                           stock.last_short_k,
+                                                                                                           predicted_breakout_price))
+        
+        summary_message_list.append("=============================================================")  
+        summary_message_list.append("Number of bear breakout target: %s" % len(short_breakout_list))
+        for stock in short_breakout_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol, stock.short_name, "***" if stock.has_warrant else "", stock.last_short_k))  
+                                         
+        summary_message_list.append("Number of bear breakout 2nd day target: %s" % len(short_breakout2_list))
+        for stock in short_breakout2_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol, stock.short_name, "***" if stock.has_warrant else "", stock.last_short_k))  
+                                          
+        summary_message_list.append("Number of bear breakout 3rd day target: %s" % len(short_breakout3_list))
+        for stock in short_breakout3_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol, stock.short_name, "***" if stock.has_warrant else "", stock.last_short_k))  
+                                          
+        summary_message_list.append("Number of bear watch target: %s" % len(short_watch_list))
+        for stock in short_watch_list:
+            predicted_breakout_price = None
+            if INSPECT_LATEST_DATA:
+                predicted_breakout_price = predict_breakout_price(stock, BEAR_SHORT_K_LEVEL)
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s), breakout price to watch=%s" % (stock.symbol,
+                                                                                                           stock.short_name,
+                                                                                                           "***" if stock.has_warrant else "",
+                                                                                                           stock.last_short_k,
+                                                                                                           predicted_breakout_price))
+        summary_message_list.append("=============================================================") 
+        summary_message_list.append("Generate plots for index items") 
+        index_list = Index_Item.objects.filter(wearn_symbol__isnull=False)
+        for index_entry in index_list:
+            plot_obj = Strategy_Plot_By_Stoch_Pop_For_Index(index_entry, category='index', end_date=trading_date_list[0].strftime("%Y%m%d"))
+            fig_filename = plot_obj.do()
+            index_entry.fig_filename = fig_filename                  
+        summary_message_list.append("=============================================================") 
+        summary_message_list.append("Generate plots for watch items")  
+        watch_filename = "ipython/stock_strategy/stocks_to_watch.txt" 
+        with open(watch_filename, 'r') as fp:
+            stock_list = [line.rstrip() for line in fp]
+        watch_list = Stock_Item.objects.filter(symbol__in=stock_list)
+        for stock_entry in watch_list:
+            plot_obj = Strategy_Plot_By_Stoch_Pop_For_Stock(stock_entry, category='instock_watch', end_date=trading_date_list[0].strftime("%Y%m%d"))
+            fig_filename = plot_obj.do()
+            stock_entry.fig_filename = fig_filename
+        # write into summary file
         with codecs.open(summary_filename, 'w', encoding="utf8") as fd:
-            fd.write("Run the target selection for %s with Stochastic Pop/Drop strategy.\n" % trading_date_list[0])
-            for stock in stock_items: 
-                # first make sure the stocks have trading entries with non null strategy.fourteen_day_k, strategy.seventy_day_k, strategy.adx values within the trading date range
-                trading_entries = stock.twse_trading_list.filter(trading_date__gte=target_td,
-                                                                 strategy__fourteen_day_k__isnull=False, 
-                                                                 strategy__seventy_day_k__isnull=False, 
-                                                                 strategy__adx__isnull=False).select_related('strategy').order_by('trading_date')
-                if not INSPECT_LATEST_DATA: 
-                    trading_entries = trading_entries.filter(trading_date__lte=ttd)
-                if len(trading_entries) != TRADING_DATE_RANGE: 
-                    continue 
-                data_list = [(float(entry.strategy.seventy_day_k),
-                              float(entry.strategy.seventy_day_d),
-                              float(entry.strategy.fourteen_day_k),
-                              float(entry.strategy.fourteen_day_d),
-                              float(entry.strategy.pdi14),
-                              float(entry.strategy.ndi14), 
-                              float(entry.strategy.adx)) for entry in trading_entries]
-                data_array=np.asarray(data_list)
-                data_array_t= data_array.T
-                selected=False
-                if pre_filtering_bull(data_array_t, BULL_LONG_K_LEVEL, ADX_LEVEL):
-                    if breakout_list_bull(data_array_t, BULL_SHORT_K_LEVEL):
-                        long_breakout_list.append(stock)    
-                        selected=True    
-                    elif breakout2_list_bull(data_array_t, BULL_SHORT_K_LEVEL):
-                        long_breakout2_list.append(stock)
-                        selected=True    
-                    elif breakout3_list_bull(data_array_t, BULL_SHORT_K_LEVEL):
-                        long_breakout3_list.append(stock)
-                        selected=True    
-                    elif watch_list_bull(data_array_t, BULL_SHORT_K_LEVEL):
-                        long_watch_list.append(stock)
-                        selected=True    
-                    if selected:
-                        #check if there are 'call' warrants available for trading
-                        stock.has_warrant=stock.warrant_item_list.call_list().filter(last_trading_date__gte=trading_date_list[0]).exists()
-                        stock.last_short_k=data_array[-1][2]
-                        stochastic_pop_drop_plot(stock_symbol=stock.symbol, category='bull')
-                elif pre_filtering_bear(data_array_t, BEAR_LONG_K_LEVEL, ADX_LEVEL):
-                    if breakout_list_bear(data_array_t, BEAR_SHORT_K_LEVEL):
-                        short_breakout_list.append(stock)
-                        selected=True
-                    elif breakout2_list_bear(data_array_t, BEAR_SHORT_K_LEVEL):
-                        short_breakout2_list.append(stock)
-                        selected=True    
-                    elif breakout3_list_bear(data_array_t, BEAR_SHORT_K_LEVEL):
-                        short_breakout3_list.append(stock)
-                        selected=True    
-                    elif watch_list_bear(data_array_t, BEAR_SHORT_K_LEVEL):
-                        short_watch_list.append(stock)
-                        selected=True 
-                    if selected:
-                        #check if there are 'put' warrants available for trading
-                        stock.has_warrant=stock.warrant_item_list.put_list().filter(last_trading_date__gte=trading_date_list[0]).exists()
-                        stock.last_short_k=data_array[-1][2]
-                        stochastic_pop_drop_plot(stock_symbol=stock.symbol,category='bear')
-                  
-            fd.write("Number of bull breakout target: %s\n" % len(long_breakout_list))
-            for stock in long_breakout_list:
-                fd.write("Found a breakout bull: stock symbol = %s(%s,short_k=%s), has_warrant=%s\n" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant))
+            fd.write('\n'.join (summary_message_list))
+        
+        if notify:
+            # notify by email with attachment of index_list
+            notify_by_mail(subject="%s Twse Index" % date_of_interest,
+                       text="Total entries: %s" % len(index_list),
+                       files=[item.fig_filename for item in index_list])  
+            # notify by email with attachment of watch_list
+            notify_by_mail(subject="%s Watch list" % date_of_interest,
+                       text="Total entries: %s" % len(watch_list),
+                       files=[item.fig_filename for item in watch_list])                                                   
+            # notify by email with attachments of long_list
+            notify_by_mail(subject="%s Long List by Stoch Pop" % date_of_interest,
+                       text="Total entries: %s" % len(long_list),
+                       files=[item.fig_filename for item in long_list]) 
+            # notify by email with attachments of long_list_with_warrant         
+            notify_by_mail(subject="%s Long List with Warrant by Stoch Pop" % date_of_interest,
+                       text="Total entries: %s" % len(long_list_with_warrant),
+                       files=[item.fig_filename for item in long_list_with_warrant])
+            # notify by email with attachments of short_list
+            notify_by_mail(subject="%s Short List by Stoch Drop" % date_of_interest,
+                       text="Total entries: %s" % len(short_list),
+                       files=[item.fig_filename for item in short_list]) 
+            # notify by email with attachments of short_list_with_warrant
+            notify_by_mail(subject="%s Short List with Warrant by Stoch Drop" % date_of_interest,
+                       text="Total entries: %s" % len(short_list_with_warrant),
+                       files=[item.fig_filename for item in short_list_with_warrant])
+#         
+            # notify by email with attachment of summary
+            with open(summary_filename, 'rb') as fil:
+                notify_by_mail(subject="%s Summary by Stoch Pop/Drop Strategy" % date_of_interest,
+                       text=fil.read())
+        transaction.commit()
+        job.success()
+    except: 
+        print traceback.format_exc()
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)
+
+def strategy_by_stochastic_cross_over_job(notify=False, gen_plot=False): 
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = strategy_by_stochastic_cross_over_job.__name__ 
+    try:
+        # parameters:
+        INSPECT_LATEST_DATA = True
+        # trading date range to inspect the k/d
+        TRADING_DATE_RANGE = 2
+        # long k threshold
+        BULL_LONG_K_LEVEL = 20
+        BULL_SHORT_K_LEVEL = 20
+        BEAR_LONG_K_LEVEL = 80
+        BEAR_SHORT_K_LEVEL = 80
+        #
+        long_cross_level_list = [] 
+        short_cross_level_list = []
+        long_cross_level_watch_list = []
+        short_cross_level_watch_list = []        
+        long_golden_cross_list = [] 
+        short_death_cross_list = []
+        long_golden_cross_watch_list = []
+        short_death_cross_watch_list = []
+#
+        long_list = []
+        long_list_with_warrant = []
+        short_list = []
+        short_list_with_warrant = []
+        #
+        stock_items = Stock_Item.objects.all().order_by('symbol')
+        # calculate target trading date
+        if INSPECT_LATEST_DATA:
+            trading_date_list = Trading_Date.objects.all().values_list('trading_date', flat=True).order_by('-trading_date')[:TRADING_DATE_RANGE]
+        else:
+            TARGET_TRADING_DATE = '20150415'
+            ttd = convertToDate(TARGET_TRADING_DATE)
+            trading_date_list = Trading_Date.objects.filter(trading_date__lte=ttd).values_list('trading_date', flat=True).order_by('-trading_date')[:TRADING_DATE_RANGE]
+             
+        target_td = trading_date_list[TRADING_DATE_RANGE - 1]                  
+        date_of_interest = trading_date_list[0].strftime("%Y/%m/%d")            
+        directory = "ipython/stock_strategy/stoch_osci/%s" % trading_date_list[0].strftime("%Y%m%d")
+        if not os.path.exists(directory):
+            os.makedirs(directory)    
+        summary_filename = "%s/summary_stoch_cross.txt" % directory     
+        summary_message_list = []
+        
+        summary_message_list.append("Run the target selection for %s with Stochastic Crossover strategy." % trading_date_list[0])
+        for stock in stock_items: 
+            # first make sure the stocks have trading entries with non null strategy.fourteen_day_k, strategy.seventy_day_k values within the trading date range
+            trading_entries = stock.twse_trading_list.filter(trading_date__gte=target_td,
+                                                             strategy__fourteen_day_k__isnull=False,
+                                                             strategy__seventy_day_k__isnull=False
+                                                             ).select_related('strategy').order_by('trading_date')
+            if not INSPECT_LATEST_DATA: 
+                trading_entries = trading_entries.filter(trading_date__lte=ttd)
+            if len(trading_entries) != TRADING_DATE_RANGE: 
+                continue 
+            data_list = [(float(entry.strategy.seventy_day_k),
+                          float(entry.strategy.seventy_day_d),
+                          float(entry.strategy.fourteen_day_k),
+                          float(entry.strategy.fourteen_day_d)
+                          ) for entry in trading_entries]
+            data_array = np.asarray(data_list)
+            data_array_t = data_array.T
+            long_selected = False
+            short_selected = False
+            if stoch_cross_level_list_bull(data_array_t, BULL_LONG_K_LEVEL, BULL_SHORT_K_LEVEL):
+                long_cross_level_list.append(stock)  
+                long_selected = True
+            elif stoch_cross_level_watch_list_bull(data_array_t, BULL_LONG_K_LEVEL, BULL_SHORT_K_LEVEL):
+                long_cross_level_watch_list.append(stock)  
+                long_selected = True
+            elif stoch_golden_cross_list_bull(data_array_t, BULL_LONG_K_LEVEL, BULL_SHORT_K_LEVEL):
+                long_golden_cross_list.append(stock)  
+                long_selected = True
+            elif stoch_golden_cross_watch_list_bull(data_array_t, BULL_LONG_K_LEVEL, BULL_SHORT_K_LEVEL):
+                long_golden_cross_watch_list.append(stock)  
+                long_selected = True
+            elif stoch_cross_level_list_bear(data_array_t, BEAR_LONG_K_LEVEL, BEAR_SHORT_K_LEVEL):
+                short_cross_level_list.append(stock)  
+                short_selected = True
+            elif stoch_cross_level_watch_list_bear(data_array_t, BEAR_LONG_K_LEVEL, BEAR_SHORT_K_LEVEL):
+                short_cross_level_watch_list.append(stock)  
+                short_selected = True
+            elif stoch_death_cross_list_bear(data_array_t, BEAR_LONG_K_LEVEL, BEAR_SHORT_K_LEVEL):
+                short_death_cross_list.append(stock)  
+                short_selected = True
+            elif stoch_death_cross_watch_list_bear(data_array_t, BEAR_LONG_K_LEVEL, BEAR_SHORT_K_LEVEL):
+                short_death_cross_watch_list.append(stock)  
+                short_selected = True
+            if long_selected:
+                # check if there are 'call' warrants available for trading
+                stock.has_warrant = stock.warrant_item_list.call_list().filter(last_trading_date__gte=trading_date_list[0]).exists()
+                stock.last_short_k = data_array[-1][2]
+                if gen_plot:
+                    plot_obj = Strategy_Plot_By_Stoch_Pop_For_Stock(stock, category='stoch_cross_bull', end_date=trading_date_list[0].strftime("%Y%m%d"))
+                    fig_filename = plot_obj.do()
+                    stock.fig_filename = fig_filename
+                if stock.has_warrant:
+                    long_list_with_warrant.append(stock)
+                else:
+                    long_list.append(stock)
+            elif short_selected:
+                # check if there are 'put' warrants available for trading
+                stock.has_warrant = stock.warrant_item_list.put_list().filter(last_trading_date__gte=trading_date_list[0]).exists()
+                stock.last_short_k = data_array[-1][2]
+                if gen_plot:
+                    plot_obj = Strategy_Plot_By_Stoch_Pop_For_Stock(stock, category='stoch_cross_bear', end_date=trading_date_list[0].strftime("%Y%m%d"))
+                    fig_filename = plot_obj.do()
+                    stock.fig_filename = fig_filename
+                if stock.has_warrant:
+                    short_list_with_warrant.append(stock)
+                else:
+                    short_list.append(stock)
+                
+                 
+        summary_message_list.append("=============================================================")  
+        summary_message_list.append("Number of bull stochastic cross level target: %s" % len(long_cross_level_list))
+        for stock in long_cross_level_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                stock.short_name,
+                                                                                "***" if stock.has_warrant else "",
+                                                                                stock.last_short_k))
             
-            fd.write("Number of bull breakout 2nd day target: %s\n" % len(long_breakout2_list))
-            for stock in long_breakout2_list:
-                fd.write("Found a breakout 2nd day bull: stock symbol = %s(%s,short_k=%s), has_warrant=%s\n" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant))
-                
-            fd.write("Number of bull breakout 3rd day target: %s\n" % len(long_breakout3_list))
-            for stock in long_breakout3_list:
-                fd.write("Found a breakout 3rd day bull: stock symbol = %s(%s,short_k=%s), has_warrant=%s\n" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant))
-                
-            fd.write("Number of bull watch target: %s\n" % len(long_watch_list))
-            for stock in long_watch_list:
-                predicted_breakout_price=None
-                if INSPECT_LATEST_DATA:
-                    predicted_breakout_price=predict_breakout_price(stock,BULL_SHORT_K_LEVEL)
-                fd.write("Found a watch bull: stock symbol = %s(%s,short_k=%s), has_warrant=%s, breakout price to watch=%s\n" % (stock.symbol, 
-                                                                                                                               stock.short_name, 
-                                                                                                                               stock.last_short_k, 
-                                                                                                                               stock.has_warrant, 
-                                                                                                                               predicted_breakout_price))
-            #
-            fd.write("=============================================================\n")  
-            fd.write("Number of bear breakout target: %s\n" % len(short_breakout_list))
-            for stock in short_breakout_list:
-                fd.write("Found a breakout bear: stock symbol = %s(%s,short_k=%s), has_warrant=%s\n" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant))
-               
-            fd.write("Number of bear breakout 2nd day target: %s\n" % len(short_breakout2_list))
-            for stock in short_breakout2_list:
-                fd.write("Found a breakout 2nd day bear: stock symbol = %s(%s,short_k=%s), has_warrant=%s\n" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant))
-                
-            fd.write("Number of bear breakout 3rd day target: %s\n" % len(short_breakout3_list))
-            for stock in short_breakout3_list:
-                fd.write("Found a breakout 3rd day bear: stock symbol = %s(%s,short_k=%s), has_warrant=%s\n" % (stock.symbol, stock.short_name, stock.last_short_k, stock.has_warrant))
-                
-            fd.write("Number of bear watch target: %s\n" % len(short_watch_list))
-            for stock in short_watch_list:
-                predicted_breakout_price=None
-                if INSPECT_LATEST_DATA:
-                    predicted_breakout_price=predict_breakout_price(stock,BEAR_SHORT_K_LEVEL)
-                fd.write("Found a watch bear: stock symbol = %s(%s,short_k=%s), has_warrant=%s, breakout price to watch=%s\n" % (stock.symbol, 
-                                                                                                                               stock.short_name, 
-                                                                                                                               stock.last_short_k, 
-                                                                                                                               stock.has_warrant, 
-                                                                                                                               predicted_breakout_price))
+        summary_message_list.append("Number of bull stochastic cross level watch target: %s" % len(long_cross_level_watch_list))
+        for stock in long_cross_level_watch_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                  stock.short_name,
+                                                                                  "***" if stock.has_warrant else "",
+                                                                                  stock.last_short_k))
+        summary_message_list.append("Number of bull stochastic golden cross target: %s" % len(long_golden_cross_list))
+        for stock in long_golden_cross_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                stock.short_name,
+                                                                                "***" if stock.has_warrant else "",
+                                                                                stock.last_short_k))
+         
+        summary_message_list.append("Number of bull stochastic golden cross watch target: %s" % len(long_golden_cross_watch_list))
+        for stock in long_golden_cross_watch_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                  stock.short_name,
+                                                                                  "***" if stock.has_warrant else "",
+                                                                                  stock.last_short_k))
+
+        summary_message_list.append("=============================================================")
+        summary_message_list.append("Number of bear stochastic cross level target: %s" % len(short_cross_level_list))
+        for stock in short_cross_level_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                stock.short_name,
+                                                                                "***" if stock.has_warrant else "",
+                                                                                stock.last_short_k))
+         
+        summary_message_list.append("Number of bear stochastic cross level watch target: %s" % len(short_cross_level_watch_list))
+        for stock in short_cross_level_watch_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                  stock.short_name,
+                                                                                  "***" if stock.has_warrant else "",
+                                                                                  stock.last_short_k))
+
+        summary_message_list.append("Number of bear stochastic death cross target: %s" % len(short_death_cross_list))
+        for stock in short_death_cross_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                stock.short_name,
+                                                                                "***" if stock.has_warrant else "",
+                                                                                stock.last_short_k))
+ 
+        summary_message_list.append("Number of bear stochastic death cross watch target: %s" % len(short_death_cross_watch_list))
+        for stock in short_death_cross_watch_list:
+            summary_message_list.append("Stock symbol = %s(%s%s,short_k=%s)" % (stock.symbol,
+                                                                                  stock.short_name,
+                                                                                  "***" if stock.has_warrant else "",
+                                                                                  stock.last_short_k))
+        # write into summary file
+        with codecs.open(summary_filename, 'w', encoding="utf8") as fd:
+            fd.write('\n'.join (summary_message_list))
+        
+        if gen_plot and notify:
+                                             
+            # notify by email with attachments of long_list
+            notify_by_mail(subject="%s Long List by Stoch Cross" % date_of_interest,
+                       text="Total entries: %s" % len(long_list),
+                       files=[item.fig_filename for item in long_list]) 
+            # notify by email with attachments of long_list_with_warrant         
+            notify_by_mail(subject="%s Long List with Warrant by Stoch Cross" % date_of_interest,
+                       text="Total entries: %s" % len(long_list_with_warrant),
+                       files=[item.fig_filename for item in long_list_with_warrant])
+            # notify by email with attachments of short_list
+            notify_by_mail(subject="%s Short List by Stoch Cross" % date_of_interest,
+                       text="Total entries: %s" % len(short_list),
+                       files=[item.fig_filename for item in short_list]) 
+            # notify by email with attachments of short_list_with_warrant
+            notify_by_mail(subject="%s Short List with Warrant by Stoch Cross" % date_of_interest,
+                       text="Total entries: %s" % len(short_list_with_warrant),
+                       files=[item.fig_filename for item in short_list_with_warrant])
+#         
+            # notify by email with attachment of summary
+            with open(summary_filename, 'rb') as fil:
+                notify_by_mail(subject="%s Summary by Stoch Cross Strategy" % date_of_interest,
+                       text=fil.read())
         transaction.commit()
         job.success()
     except: 
