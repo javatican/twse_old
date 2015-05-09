@@ -10,8 +10,8 @@ from core.models import Stock_Item
 from warrant_app.utils.trading_util import Strategy_Plot_By_Stoch_Pop_For_Stock
 
 
-stock_symbol='0050'
+stock_symbol='2002'
 stock=Stock_Item.objects.get_by_symbol(stock_symbol)
-plot_obj = Strategy_Plot_By_Stoch_Pop_For_Stock(stock, category='inspect', interactive_mode=False)
+plot_obj = Strategy_Plot_By_Stoch_Pop_For_Stock(stock, category='inspect', interactive_mode=True)
 plot_obj.do()
         

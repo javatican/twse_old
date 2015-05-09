@@ -10,8 +10,8 @@ from core.models import Trading_Date, Twse_Trading_Processed, \
     Twse_Summary_Price_Processed
 
 
-download_twse_index_stats_job(year=2015, month_list=[4,])
-download_twse_index_stats2_job(year=2015, month_list=[4,])
+download_twse_index_stats_job(year=2015, month_list=[5,])
+download_twse_index_stats2_job(year=2015, month_list=[5,])
 
 last_processed_date=Twse_Trading_Processed.objects.get_last_processed()
 q_date_list=Trading_Date.objects.filter(trading_date__gt=last_processed_date).values_list('trading_date', flat=True)

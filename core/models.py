@@ -298,9 +298,9 @@ class TwseTradingStrategyManager(models.Manager, TwseTradingStrategyMixin):
     def get_queryset(self):
         return TwseTradingStrategyQuerySet(self.model, using=self._db)
 
-class Twse_Trading_Strategy(Model):
+class Twse_Trading_Strategy(Model): 
     trading = models.OneToOneField(Twse_Trading, primary_key=True, related_name="strategy")
-    stock_symbol = models.ForeignKey("core.Stock_Item", null=False, related_name="twse_trading_so_list", verbose_name=_('stock_symbol'))
+    stock_symbol = models.ForeignKey("core.Stock_Item", null=False, related_name="twse_trading_strat_list", verbose_name=_('stock_symbol'))
     trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
     fourteen_day_k = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('fourteen_day_k'))
     fourteen_day_d = models.DecimalField(max_digits=6, decimal_places=2, null=True, verbose_name=_('fourteen_day_d'))
@@ -317,6 +317,46 @@ class Twse_Trading_Strategy(Model):
 #   
     objects = TwseTradingStrategyManager() 
     
+class SelectionStrategyTypeMixin(object): 
+    pass
+class SelectionStrategyTypeQuerySet(QuerySet, SelectionStrategyTypeMixin):
+    pass
+
+class SelectionStrategyTypeManager(models.Manager, SelectionStrategyTypeMixin):
+    def get_queryset(self):
+        return SelectionStrategyTypeQuerySet(self.model, using=self._db)
+    def get_by_symbol(self, symbol):
+        return self.get(symbol=symbol)
+    
+class Selection_Strategy_Type(Model):
+    symbol = models.CharField(default='', max_length=50, verbose_name=_('strategy_symbol'))
+    name = models.CharField(default='', max_length=100, verbose_name=_('strategy_name'))
+    is_bull = models.NullBooleanField(null=True, verbose_name=_('is_bull')) 
+    objects = SelectionStrategyTypeManager() 
+  
+class SelectionStockItemMixin(object): 
+    pass
+class SelectionStockItemQuerySet(QuerySet, SelectionStockItemMixin):
+    pass
+
+class SelectionStockItemManager(models.Manager, SelectionStockItemMixin):
+    def get_queryset(self):
+        return SelectionStockItemQuerySet(self.model, using=self._db)
+  
+class Selection_Stock_Item(Model):
+    strategy_type = models.ForeignKey("core.Selection_Strategy_Type", null=False, related_name="selection_list", verbose_name=_('strategy_type'))
+    stock_symbol = models.ForeignKey("core.Stock_Item", null=False, related_name="selection_list2", verbose_name=_('stock_symbol'))
+    trading = models.ForeignKey("core.Twse_Trading", null=False, related_name="selection_list3", verbose_name=_('trading'))
+    trading_date = models.DateField(auto_now_add=False, null=False, verbose_name=_('trading_date')) 
+    has_warrant = models.NullBooleanField(null=True, verbose_name=_('has_warrant')) 
+    low_volume = models.NullBooleanField(null=True, verbose_name=_('low_volume')) 
+    volume_change = models.DecimalField(max_digits=11, decimal_places=0, null=True, verbose_name=_('volume_change')) 
+    performance_3day = models.DecimalField(max_digits=7, decimal_places=1, null=True, verbose_name=_('performance_3day')) 
+    performance_5day = models.DecimalField(max_digits=7, decimal_places=1, null=True, verbose_name=_('performance_5day')) 
+    performance_10day = models.DecimalField(max_digits=7, decimal_places=1, null=True, verbose_name=_('performance_10day')) 
+    performance_20day = models.DecimalField(max_digits=7, decimal_places=1, null=True, verbose_name=_('performance_20day')) 
+    objects = SelectionStockItemManager() 
+
 class TwseTradingWarrantMixin(object):
     def by_date(self, trading_date):
         return self.filter(trading_date=trading_date)

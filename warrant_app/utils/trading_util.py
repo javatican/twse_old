@@ -1,11 +1,14 @@
 from __future__ import unicode_literals
 
+import datetime
 import json
 import math
 import matplotlib
 from matplotlib.finance import candlestick_ohlc
 from matplotlib.font_manager import FontProperties
 import os
+import requests
+from requests.sessions import Session
 
 from core.models import Trading_Date, Stock_Item
 import numpy as np
@@ -59,80 +62,18 @@ def calc_stochastic_oscillator(input_list=None, LOOK_BACK_PERIOD=14, K_SMOOTHING
         items_to_update.append(tts)
     return items_to_update
 
-# def calc_stochastic_oscillator_for_stock(stock, trading_item_list=None, LOOK_BACK_PERIOD=14, K_SMOOTHING=3, D_MOVING_AVERAGE=3):
-#     # this function is used to recalculate stochastic_oscillator values for a specific stock
-#     # if trading_item_list are given, will be used for calculation. Otherwise hit the DB and get all trading items for the stock.
-#     # default parameters are for 14-day stochastic oscillator
-#     strategy_items_to_update = []
-#     if trading_item_list:
-#         items = trading_item_list
-#     else:
-#         items = stock.twse_trading_list.all().select_related('strategy').order_by('trading_date')
-#     highest_price_list = []
-#     lowest_price_list = []
-#     closing_price_list = []
-#     for item in items:
-#         highest_price_list.append(float(item.highest_price))
-#         lowest_price_list.append(float(item.lowest_price))
-#         closing_price_list.append(float(item.closing_price))
-#     highest_array = np.array(highest_price_list)
-#     lowest_array = np.array(lowest_price_list)
-#     closing_array = np.array(closing_price_list)
-#     k_array, d_array = _calc_stochastic_oscillator(highest_array, lowest_array, closing_array, LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE)
-#     # ryan note: 
-#     # 1. the size of k_array is the same as that of d_array
-#     # 2. the size of k_array is 'LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3' shorter than that of items
-#     for j, item in enumerate(items[LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3:]):
-#         tts = item.strategy
-#         if LOOK_BACK_PERIOD == 14:
-#             tts.fourteen_day_k = k_array[j]
-#             tts.fourteen_day_d = d_array[j]
-#         else:
-#             tts.seventy_day_k = k_array[j]
-#             tts.seventy_day_d = d_array[j]
-#         strategy_items_to_update.append(tts)
-#     return strategy_items_to_update
-# 
-# def calc_stochastic_oscillator_for_index(index_item, index_change_list=None, LOOK_BACK_PERIOD=14, K_SMOOTHING=3, D_MOVING_AVERAGE=3):
-#     # this function is used to recalculate stochastic_oscillator values for a specific index
-#     # if index_change_list are given, will be used for calculation. Otherwise hit the DB and get all index_change items for the index.
-#     # default parameters are for 14-day stochastic oscillator
-#     items_to_update = []
-#     if index_change_list:
-#         items = index_change_list
-#     else:
-#         items = index_item.index_change_list.all().order_by('trading_date')
-#     highest_price_list = []
-#     lowest_price_list = []
-#     closing_price_list = []
-#     for item in items:
-#         highest_price_list.append(float(item.highest_price))
-#         lowest_price_list.append(float(item.lowest_price))
-#         closing_price_list.append(float(item.closing_price))
-#     highest_array = np.array(highest_price_list)
-#     lowest_array = np.array(lowest_price_list)
-#     closing_array = np.array(closing_price_list)
-#     k_array, d_array = _calc_stochastic_oscillator(highest_array, lowest_array, closing_array, LOOK_BACK_PERIOD, K_SMOOTHING, D_MOVING_AVERAGE)
-#     # ryan note: 
-#     # 1. the size of k_array is the same as that of d_array
-#     # 2. the size of k_array is 'LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3' shorter than that of items
-#     for j, item in enumerate(items[LOOK_BACK_PERIOD + K_SMOOTHING + D_MOVING_AVERAGE - 3:]):
-#         
-#         if LOOK_BACK_PERIOD == 14:
-#             item.fourteen_day_k = k_array[j]
-#             item.fourteen_day_d = d_array[j]
-#         else:
-#             item.seventy_day_k = k_array[j]
-#             item.seventy_day_d = d_array[j]
-#         items_to_update.append(item)
-#     return items_to_update
-
+class NotEnoughTradingDataException(Exception):
+    def __init__(self, value=None):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+    
 def _calc_stochastic_oscillator(highest_array, lowest_array, closing_array, LOOK_BACK_PERIOD=14, K_SMOOTHING=3, D_MOVING_AVERAGE=3):
     item_count = closing_array.size
     # print "item_count=%s" % item_count
     min_item_count = LOOK_BACK_PERIOD + K_SMOOTHING - 1 + D_MOVING_AVERAGE - 1
     if item_count < min_item_count: 
-        raise Exception
+        raise NotEnoughTradingDataException
     k_array = np.zeros(item_count - LOOK_BACK_PERIOD + 1)
     for j, item in enumerate(closing_array[LOOK_BACK_PERIOD - 1:]):
         highest_price = np.max(highest_array[j:LOOK_BACK_PERIOD + j])
@@ -227,80 +168,14 @@ def update_di_adx(input_list=None, SMOOTHING_FACTOR=14):
         if not math.isnan(adx_array[j]): tts.adx = adx_array[j]                        
         strategy_items_to_update.append(tts)
     return strategy_items_to_update      
-
-# def recalc_all_di_adx_for_stock(stock, trading_item_list=None, SMOOTHING_FACTOR=14):
-#     # this function is used to recalculate 'all' ADX related values for a specific stock
-#     # if trading_item_list are given, will be used for calculation. Otherwise hit the DB and get all trading items for the stock.
-#     strategy_items_to_update = []
-#     if trading_item_list:
-#         items = trading_item_list
-#     else:
-#         items = stock.twse_trading_list.all().select_related('strategy').order_by('trading_date')
-#     highest_price_list = []
-#     lowest_price_list = []
-#     closing_price_list = []
-#     for item in items:
-#         highest_price_list.append(float(item.highest_price))
-#         lowest_price_list.append(float(item.lowest_price))
-#         closing_price_list.append(float(item.closing_price))
-#     highest_array = np.array(highest_price_list)
-#     lowest_array = np.array(lowest_price_list)
-#     closing_array = np.array(closing_price_list)
-#     tr14_array, pdm14_array, ndm14_array, pdi14_array, ndi14_array, adx_array = _calc_di_adx(highest_array, lowest_array, closing_array, SMOOTHING_FACTOR=SMOOTHING_FACTOR)
-#     # ryan note:
-#     # 1. the size of tr14_array, pdm14_array, ndm14_array, pdi14_array, ndi14_array, adx_array are the same
-#     # 2. the size of adx_array is '2*SMOOTHING_FACTOR-1' shorter than that of items
-#     for j, item in enumerate(items[SMOOTHING_FACTOR + SMOOTHING_FACTOR - 1:]):
-#         tts = item.strategy
-#         tts.tr14 = tr14_array[j]
-#         tts.pdm14 = pdm14_array[j]
-#         tts.ndm14 = ndm14_array[j]
-#         if not math.isnan(pdi14_array[j]): tts.pdi14 = pdi14_array[j]
-#         if not math.isnan(ndi14_array[j]): tts.ndi14 = ndi14_array[j]
-#         if not math.isnan(adx_array[j]): tts.adx = adx_array[j]                        
-#         strategy_items_to_update.append(tts)
-#     return strategy_items_to_update
-# 
-# def update_di_adx_for_stock(stock, trading_item_list=None, SMOOTHING_FACTOR=14):
-#     # this function is used to update missing ADX related values for a stock
-#     # trading_item_list[0] is assumed to contain tr14, pdm14, ndm14, adx values, and will be used to calculate the following missing values.
-#     # trading_item_list can not be null. 
-#     strategy_items_to_update = []
-#     if not trading_item_list:
-#         raise Exception
-#     else:
-#         items = trading_item_list
-#     highest_price_list = []
-#     lowest_price_list = []
-#     closing_price_list = []
-#     for item in items:
-#         highest_price_list.append(float(item.highest_price))
-#         lowest_price_list.append(float(item.lowest_price))
-#         closing_price_list.append(float(item.closing_price))
-#     highest_array = np.array(highest_price_list)
-#     lowest_array = np.array(lowest_price_list)
-#     closing_array = np.array(closing_price_list)
-#     previous_strategy = items[0].strategy
-#     tr14_array, pdm14_array, ndm14_array, pdi14_array, ndi14_array, adx_array = _calc_di_adx_pairwise(highest_array, lowest_array, closing_array, previous_strategy, SMOOTHING_FACTOR=SMOOTHING_FACTOR)
-# #
-#     for j, item in enumerate(items[1:]):
-#         tts = item.strategy
-#         tts.tr14 = tr14_array[j]
-#         tts.pdm14 = pdm14_array[j]
-#         tts.ndm14 = ndm14_array[j]
-#         if not math.isnan(pdi14_array[j]): tts.pdi14 = pdi14_array[j]
-#         if not math.isnan(ndi14_array[j]): tts.ndi14 = ndi14_array[j]
-#         if not math.isnan(adx_array[j]): tts.adx = adx_array[j]                        
-#         strategy_items_to_update.append(tts)
-#     return strategy_items_to_update                       
-                        
+                      
 def _calc_di_adx(highest_array, lowest_array, closing_array, SMOOTHING_FACTOR=14):
     # Average True Range: refer to http://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:average_true_range_atr
     # Average Directional Index: refer to http://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:average_directional_index_adx
     item_count = closing_array.size
     min_item_count = SMOOTHING_FACTOR + SMOOTHING_FACTOR
     if item_count < min_item_count: 
-        raise Exception
+        raise NotEnoughTradingDataException                      
     # tr(True Range) array, pdm(Plus Directional Movement) array and ndm(Minus Directional Movement) array are calculated pairwise, so
     # the size of them are 'item_count-1'
     tr_array = np.zeros(item_count - 1)
@@ -392,7 +267,7 @@ def _calc_di_adx_pairwise(highest_array, lowest_array, closing_array, previous_s
     item_count = closing_array.size
     min_item_count = 2
     if item_count < min_item_count: 
-        raise Exception
+        raise NotEnoughTradingDataException
     tr_array = np.zeros(item_count - 1)
     pdm_array = np.zeros(item_count - 1)
     ndm_array = np.zeros(item_count - 1)
@@ -686,7 +561,7 @@ def stoch_death_cross_list_bear(data_array, LONG_K_LEVEL, SHORT_K_LEVEL):
     short_k = data_array[2]
     short_d = data_array[3]
     for data in short_k:
-        if data <=20: return False 
+        if data <= 20: return False 
     if short_k[-2] <= short_d[-2]: return False
     if short_k[-1] >= short_d[-1]: return False
     return True
@@ -744,7 +619,7 @@ class Strategy_Plot:
         return self.plot_data(**input_data)
         
 class Strategy_Plot_By_Stoch_Pop(Strategy_Plot): 
-    OUTPUT_ROOT_PATH = "ipython/stock_strategy/stoch_osci"
+    OUTPUT_ROOT_PATH = "ipython/stock_strategy/stoch_osci/data"
     
     # end_date format : eg. '20150401'
     def __init__(self, model_instance, category=None, end_date=None, day_range=120, interactive_mode=False, force_regen_input=False):
@@ -1109,3 +984,143 @@ def tell_me_current_smoothed_14k(stock_symbol, current_price, max_price=None, mi
     smoothed_14k = round((k1 + k2 + k3) / 3 , 2)
     return smoothed_14k
     
+def tell_me_current_kd(stock_symbol, current_price, max_price=None, min_price=None):
+    LOOK_BACK_PERIOD = 70
+    stock = Stock_Item.objects.get(symbol=stock_symbol)
+    trading_entries = stock.twse_trading_list.all().order_by('-trading_date')[:LOOK_BACK_PERIOD + 3]
+    highest_price_list = []
+    lowest_price_list = []
+    closing_price_list = []
+    highest_price_list.append(max_price)
+    lowest_price_list.append(min_price)
+    closing_price_list.append(current_price)
+    for item in trading_entries:
+        highest_price_list.append(float(item.highest_price))
+        lowest_price_list.append(float(item.lowest_price))
+        closing_price_list.append(float(item.closing_price))
+    highest_array = np.array([price for price in reversed(highest_price_list)])
+    lowest_array = np.array([price for price in reversed(lowest_price_list)])
+    closing_array = np.array([price for price in reversed(closing_price_list)])
+    
+    ks_70_arr, da_70_arr = _calc_stochastic_oscillator(highest_array, lowest_array, closing_array, LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, K_SMOOTHING=3, D_MOVING_AVERAGE=3)
+    ks_70 = ks_70_arr[0]
+    da_70 = da_70_arr[0]
+    #
+    LOOK_BACK_PERIOD = 14
+    highest_array = np.array([price for price in reversed(highest_price_list[:LOOK_BACK_PERIOD + 4])])
+    lowest_array = np.array([price for price in reversed(lowest_price_list[:LOOK_BACK_PERIOD + 4])])
+    closing_array = np.array([price for price in reversed(closing_price_list[:LOOK_BACK_PERIOD + 4])])
+    ks_14_arr, da_14_arr = _calc_stochastic_oscillator(highest_array, lowest_array, closing_array, LOOK_BACK_PERIOD=LOOK_BACK_PERIOD, K_SMOOTHING=3, D_MOVING_AVERAGE=3)
+    ks_14 = ks_14_arr[0]
+    da_14 = da_14_arr[0]
+    return (ks_70, da_70, ks_14, da_14)
+    
+def get_stock_realtime_quote(symbol):
+    tdate = datetime.datetime.today().date().strftime('%Y%m%d')
+    originUrl = 'http://mis.twse.com.tw/stock/fibest.jsp?stock=%s' % symbol
+    ajaxUrl = 'http://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_%s.tw_%s&json=1&delay=0' % (symbol, tdate)
+    try: 
+        session = Session()
+        # HEAD requests ask for *just* the headers, which is all you need to grab the
+        # session cookie
+        session.head(originUrl)
+    
+        httpResponse = session.get(url=ajaxUrl,
+                                    headers={
+                                             'Referer': originUrl, })
+        # default response encoding is ISO8859-1
+        httpResponse.encoding = "utf-8"
+        # print httpResponse.json
+        json_data = httpResponse.json()
+        msgArray = json_data['msgArray']
+        if len(msgArray) >= 0:
+            opening_price = msgArray[0]['o']
+            lowest_price = msgArray[0]['l']
+            highest_price = msgArray[0]['h']
+            closing_price = msgArray[0]['z']
+            trade_volume = msgArray[0]['v']
+            trading_time = msgArray[0]['t']
+            # print "time: %s, opening_price=%s, highest_price=%s, lowest_price=%s, closing_price=%s, volume=%s" % (trading_time, opening_price, highest_price, lowest_price, closing_price, trade_volume)
+            return (trading_time, opening_price, lowest_price, highest_price, closing_price, trade_volume)
+        else:
+            return None
+    except requests.HTTPError, e:
+        result = e.read()
+        raise Exception(result) 
+    except requests.ConnectionError:
+        result = e.read()
+        raise Exception(result) 
+    except:
+        raise
+class Stock_Quote:  
+    
+    # end_date format : eg. '20150401'
+    def __init__(self, symbol=None, trading_date=None,  trading_time=None, opening_price=None, lowest_price=None, highest_price=None, closing_price=None, trade_volume=None):
+        self.symbol = symbol
+        self.trading_date = trading_date
+        self.trading_time = trading_time
+        self.opening_price = opening_price
+        self.lowest_price = lowest_price
+        self.highest_price = highest_price
+        self.closing_price = closing_price
+        self.trade_volume = trade_volume
+        
+    def __repr__(self):
+        return 'Stock_Quote(symbol=%s, trading_date=%s, trading_time=%s, opening_price=%s, lowest_price=%s, highest_price=%s, closing_price=%s, trade_volume=%s)' % (self.symbol, 
+                                                            self.trading_date, 
+                                                            self.trading_time, 
+                                                            self.opening_price, 
+                                                            self.lowest_price, 
+                                                            self.highest_price, 
+                                                            self.closing_price, 
+                                                            self.trade_volume)                                                       
+    
+def get_multi_stock_realtime_quote(symbol_list):
+    # tdate = datetime.datetime.today().date().strftime('%Y%m%d')
+    if not symbol_list: return None
+    tdate = '20150508'
+    originUrl = 'http://mis.twse.com.tw/stock/fibest.jsp?stock=%s' % 't00'
+    sub_path_list = []
+    for symbol in symbol_list:
+        sub_path_list.append('tse_%s.tw_%s' % (symbol, tdate))
+    sub_path_str = '|'.join(sub_path_list)
+    ajaxUrl = 'http://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=%s&json=1&delay=0' % sub_path_str
+    try: 
+        session = Session()
+        # HEAD requests ask for *just* the headers, which is all you need to grab the
+        # session cookie
+        session.head(originUrl)
+    
+        httpResponse = session.get(url=ajaxUrl,
+                                    headers={
+                                             'Referer': originUrl, })
+        # default response encoding is ISO8859-1
+        httpResponse.encoding = "utf-8"
+        # print httpResponse.json
+        json_data = httpResponse.json()
+        msgArray = json_data['msgArray']
+        if len(msgArray) > 0:
+            result_list=[]
+            for item in msgArray:
+                sq=Stock_Quote()
+                sq.symbol = item['c']
+                sq.opening_price = float(item['o'])
+                sq.lowest_price = float(item['l'])
+                sq.highest_price = float(item['h'])
+                sq.closing_price = float(item['z'])
+                sq.trade_volume = float(item['v'])
+                sq.trading_date = item['d']
+                sq.trading_time = item['t']
+                result_list.append(sq)
+                print sq
+            return result_list
+        else:
+            return None
+    except requests.HTTPError, e:
+        result = e.read()
+        raise Exception(result) 
+    except requests.ConnectionError:
+        result = e.read()
+        raise Exception(result) 
+    except:
+        raise
