@@ -9,9 +9,16 @@ class DateEncoder(json.JSONEncoder):
             return obj.isoformat()
         return json.JSONEncoder.default(self, obj)
 #usage: json.dumps(data, cls=DateEncoder)
-
+def today_at_1330():
+    today_str=datetime.datetime.today().strftime('%Y-%m-%d')
+    datetime_str="%sT13:30:00" % today_str
+    return datetime.datetime.strptime(datetime_str,'%Y-%m-%dT%H:%M:%S')
 def string_to_date(date_string, date_format='%Y/%m/%d'):
     return datetime.datetime.strptime(date_string,date_format).date()
+
+# the date is default to 1900/1/1
+def string_to_time(time_string, date_format='%H:%M:%S'):
+    return datetime.datetime.strptime(time_string,date_format)
 
 def is_third_wednesday(d): 
     return d.weekday() == 2 and 14 < d.day < 22

@@ -33,7 +33,7 @@ from warrant_app.utils.black_scholes import option_price_implied_volatility_call
     option_price_delta_call_black_scholes, option_price_delta_put_black_scholes, \
     option_price_call_black_scholes, option_price_put_black_scholes
 from warrant_app.utils.dateutil import roc_year_to_western, western_to_roc_year, \
-    convertToDate, is_third_wednesday, roc_year
+    convertToDate, is_third_wednesday, roc_year, today_at_1330
 from warrant_app.utils.logutil import log_message
 from warrant_app.utils.mail_util import notify_by_mail
 from warrant_app.utils.stringutil import is_float
@@ -48,12 +48,15 @@ from warrant_app.utils.trading_util import moving_avg, \
     stoch_cross_level_watch_list_bull, stoch_golden_cross_list_bull, \
     stoch_golden_cross_watch_list_bull, stoch_cross_level_list_bear, \
     stoch_cross_level_watch_list_bear, stoch_death_cross_list_bear, \
-    stoch_death_cross_watch_list_bear, NotEnoughTradingDataException
+    stoch_death_cross_watch_list_bear, NotEnoughTradingDataException, \
+    get_multi_stock_realtime_quote, chunker, SELECTION_STRATEGY_DICT
 from warrant_app.utils.warrant_util import check_if_warrant_item, to_dict
 
 
 # from django.utils.translation import ugettext as _
 logger = logging.getLogger('warrant_app.cronjob')
+
+
 
 # Below code is one time use, so comment out.
 # # below code uses bulk creation, should be more efficient than above code
@@ -2967,3 +2970,64 @@ def strategy_by_stochastic_cross_over_job(target_date=None, notify=False, gen_pl
         transaction.commit()
         transaction.set_autocommit(True)
 
+def realtime_track_watch_stocks_job():
+    transaction.set_autocommit(False)
+    log_message(datetime.datetime.now())
+    job = Cron_Job_Log()
+    job.title = realtime_track_watch_stocks_job.__name__ 
+    try:
+        tdate=datetime.datetime.today()
+        tdate_str=tdate.strftime('%Y%m%d')
+        last_trading_date = Trading_Date.objects.get_last_trading_date()
+        #get selection_stock_item for last Trading_Date
+        #flag to select ones with issued warrants
+        SELECT_ONLY_WITH_WARRANT=True
+        selection_list = Selection_Stock_Item.objects.by_trading_date(last_trading_date).select_related('stock_symbol','trading','trading__strategy', 'strategy_type')
+        if SELECT_ONLY_WITH_WARRANT:
+            selection_list=selection_list.with_warrant()
+        # use a set to store unique stock items, because there are duplicate stock targets selected by different strategies.
+        selected_stock_set=set()
+        for item in selection_list:
+            selected_stock_set.add(item.stock_symbol.symbol)
+        time_left_for_trade = today_at_1330() - datetime.datetime.now()
+        # in secs
+        time_lapse_for_requests=60.0
+        for i in xrange(0,int(time_left_for_trade.total_seconds()/time_lapse_for_requests)):
+            print datetime.datetime.now()
+            result_dict={}
+            # submit a http request for realtime quote for a group of 10 stocks --> avoid request errors
+            GROUP_SIZE=10
+            for group in chunker(list(selected_stock_set),GROUP_SIZE):
+                temp_dict = get_multi_stock_realtime_quote(group)
+                result_dict.update(temp_dict)
+    #     for key in result_dict.keys():
+    #         print result_dict[key].symbol
+            notify_content_list=[]
+            for selection_item in selection_list:
+                strategy_type_symbol=selection_item.strategy_type.symbol 
+                if strategy_type_symbol in SELECTION_STRATEGY_DICT:
+                    selection_strategy_class =SELECTION_STRATEGY_DICT[strategy_type_symbol]      
+                else:
+                    continue
+                result = selection_item.check_notify_msg(result_dict[selection_item.stock_symbol.symbol],selection_strategy_class)
+                if result: 
+                    notify_content_list.append(result)
+            #TODO: email the notify content if not empty
+            if len(notify_content_list)>0:
+                print '\n'.join(notify_content_list)
+            time.sleep(time_lapse_for_requests)
+        transaction.commit()
+        job.success()
+    except: 
+        print traceback.format_exc()
+        logger.warning("Error when perform cron job %s" % sys._getframe().f_code.co_name, exc_info=1)
+        transaction.rollback()
+        job.failed()
+        raise
+    finally:
+        job.save()
+        transaction.commit()
+        transaction.set_autocommit(True)    
+        
+        
+        

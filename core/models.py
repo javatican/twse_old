@@ -282,6 +282,14 @@ class Twse_Trading(Model):
 
     objects = TwseTradingManager() 
 #
+    def notify_msg(self):
+        s1= 'Previouis Trading data: (fi_buy,fi_sell,fi_diff = %s, %s, %s) \n' % (self.fi_buy, self.fi_sell, self.fi_diff)
+        s2= '(sit_buy,sit_sell,sit_diff = %s, %s, %s) \n' % (self.sit_buy, self.sit_sell,  self.sit_diff)
+        s3= '(prop_buy,prop_sell,prop_diff = %s, %s, %s) \n' % ( self.proprietary_buy, self.proprietary_sell, self.proprietary_diff)
+        s4= '(hedge_buy,hedge_sell,hedge_diff = %s, %s, %s) \n' % (self.hedge_buy, self.hedge_sell, self.hedge_sell) 
+        s5= '(trade_volume,opening_price,lowest_price,highest_price, closing_price, price_change = %s,%s,%s,%s,%s,%s) \n' % (self.trade_volume,self.opening_price,self.lowest_price,self.highest_price,self.closing_price,self.price_change)
+        s6= '(year_volume_avg, week_avg, 2_week_avg, month_avg, quarter_avg, half_avg, year_avg= %s,%s,%s,%s,%s,%s,%s) \n' % (self.year_volume_avg, self.week_avg,self.two_week_avg,self.month_avg,self.quarter_avg,self.half_avg,self.year_avg)   
+        return '%s %s %s %s %s %s' % (s1,s2,s3,s4,s5,s6)
     class Meta:
         unique_together = ("stock_symbol", "trading_date")
     # below method is required to return the 'strategy' instance, because it holds stochastic oscillator/ADX related strategy fields in it.
@@ -316,7 +324,14 @@ class Twse_Trading_Strategy(Model):
 #   
 #   
     objects = TwseTradingStrategyManager() 
-    
+    def notify_msg(self):
+        return  'Previous K/D and ADX: ks_70=%s, da_70=%s, ks_14=%s, da_14=%s, ADX=%s(pdi14=%s, ndi14=%s))' % (self.seventy_day_k,
+                                                                                                                self.seventy_day_d,
+                                                                                                                self.fourteen_day_k,
+                                                                                                                self.fourteen_day_d,
+                                                                                                                self.adx,
+                                                                                                                self.pdi14,
+                                                                                                                self.ndi14)             
 class SelectionStrategyTypeMixin(object): 
     pass
 class SelectionStrategyTypeQuerySet(QuerySet, SelectionStrategyTypeMixin):
@@ -335,14 +350,18 @@ class Selection_Strategy_Type(Model):
     objects = SelectionStrategyTypeManager() 
   
 class SelectionStockItemMixin(object): 
-    pass
+    def by_trading_date(self, trading_date):
+        return self.filter(trading_date=trading_date)
+    def with_warrant(self):
+        return self.filter(has_warrant=True)
+    
 class SelectionStockItemQuerySet(QuerySet, SelectionStockItemMixin):
     pass
 
 class SelectionStockItemManager(models.Manager, SelectionStockItemMixin):
     def get_queryset(self):
         return SelectionStockItemQuerySet(self.model, using=self._db)
-  
+
 class Selection_Stock_Item(Model):
     strategy_type = models.ForeignKey("core.Selection_Strategy_Type", null=False, related_name="selection_list", verbose_name=_('strategy_type'))
     stock_symbol = models.ForeignKey("core.Stock_Item", null=False, related_name="selection_list2", verbose_name=_('stock_symbol'))
@@ -356,7 +375,21 @@ class Selection_Stock_Item(Model):
     performance_10day = models.DecimalField(max_digits=7, decimal_places=1, null=True, verbose_name=_('performance_10day')) 
     performance_20day = models.DecimalField(max_digits=7, decimal_places=1, null=True, verbose_name=_('performance_20day')) 
     objects = SelectionStockItemManager() 
-
+    def notify_msg(self):
+        return  'Selection data: strategy_type_symbol=%s, has_warrant=%s, low_volume=%s, volume_change_percent=%s' % (self.strategy_type.symbol,
+                                                                                                                self.has_warrant,
+                                                                                                                self.low_volume,
+                                                                                                                self.volume_change) 
+    def check_notify_msg(self, stock_quote, selection_strategy_class):
+        stock_item=self.stock_symbol
+        selection_strategy_obj=selection_strategy_class(stock_item=stock_item,
+                                                        selection_stock_item=self, 
+                                                        stock_quote=stock_quote, 
+                                                        trading=self.trading, 
+                                                        strategy_param=self.trading.strategy)
+        return selection_strategy_obj.check_message()
+       
+            
 class TwseTradingWarrantMixin(object):
     def by_date(self, trading_date):
         return self.filter(trading_date=trading_date)

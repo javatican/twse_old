@@ -12,9 +12,9 @@ from requests.sessions import Session
 
 from core.models import Trading_Date, Stock_Item
 import numpy as np
-from warrant_app.utils.dateutil import convertToDate, DateEncoder
-
-
+from warrant_app.utils.dateutil import convertToDate, DateEncoder, \
+    string_to_time 
+    
 def moving_avg(input_array, DAY_AVERAGE):
     item_count = input_array.size
     if item_count < DAY_AVERAGE: 
@@ -603,7 +603,204 @@ def _is_decrementing(data_array):
     else:
         return True
     
+def volume_over_average_ratio(stock_quote, trading):
+    year_volume_avg = float(trading.year_volume_avg)
+    #trade_volume from stock_quote is in 1000-share unit
+    trade_volume = stock_quote.trade_volume*1000
+    trading_time = stock_quote.trading_time
+    time_since_start = string_to_time(trading_time) - string_to_time('09:00:00')
+    time_since_in_secs = time_since_start.total_seconds()
+    # time_overall=string_to_time("13:30:00")-string_to_time('09:00:00')
+    # time_overall_in_secs=time_overall.total_seconds()
+    time_overall_in_secs = 16200.0
+    ratio = round(trade_volume / (year_volume_avg * time_since_in_secs / time_overall_in_secs),2)
+    return ratio
+
+
+class Selection_Strategy:
+    def __init__(self, stock_item, selection_stock_item, stock_quote, trading, strategy_param):
+        self.stock_item=stock_item
+        self.selection_stock_item = selection_stock_item
+        self.stock_quote = stock_quote
+        self.trading = trading
+        self.strategy_param = strategy_param
+    def is_triggered(self):
+        raise NotImplementedError("Please Implement this method")
+    def notify_message(self):
+        raise NotImplementedError("Please Implement this method")
+    def check_message(self):
+        if self.is_triggered():
+            return self.notify_message()
+        else:
+            return None
+        
+class Strategy_Stoch_Pop_Watch(Selection_Strategy):        
+    def is_triggered(self):
+        # conditions to notify
+        # 1. ks_14>80
+        # 2. volume > year_volume_avg
+        self.k_d=tell_me_current_kd_2(self.stock_quote)
+        triggered = False
+        #print self.k_d.ks_14
+        if self.k_d.ks_14 >= 80:
+            self.ratio = volume_over_average_ratio(self.stock_quote, self.trading)
+            #print self.ratio
+            if self.ratio > 1.0:
+                triggered = True
+        return triggered
     
+    def notify_message(self):
+        msg_list = []
+        msg_list.append("*** stock symbol (%s, %s)***" % (self.stock_item.symbol, self.stock_item.short_name))
+        msg_list.append(self.stock_quote.notify_msg())
+        msg_list.append(self.selection_stock_item.notify_msg())
+        msg_list.append(self.k_d.notify_msg())
+        msg_list.append(self.strategy_param.notify_msg())
+        msg_list.append(self.trading.notify_msg())
+        msg_list.append("volume over year average ratio : %s" % self.ratio)
+        return "\n".join(msg_list)
+    
+class Strategy_Stoch_Drop_Watch(Selection_Strategy):
+    def is_triggered(self):
+        self.k_d = tell_me_current_kd_2(self.stock_quote)
+        # conditions to notify
+        # 1. ks_14<20
+        # 2. volume > year_volume_avg
+        triggered = False
+        #print self.k_d.ks_14
+        if self.k_d.ks_14 <= 20:
+            self.ratio = volume_over_average_ratio(self.stock_quote, self.trading)
+            #print self.ratio
+            if self.ratio > 1.0:
+                triggered = True
+        return triggered
+    
+    def notify_message(self):
+        msg_list = []
+        msg_list.append("*** stock symbol (%s, %s)***" % (self.stock_item.symbol, self.stock_item.short_name))
+        msg_list.append(self.stock_quote.notify_msg())
+        msg_list.append(self.selection_stock_item.notify_msg())
+        msg_list.append(self.k_d.notify_msg())
+        msg_list.append(self.strategy_param.notify_msg())
+        msg_list.append(self.trading.notify_msg())
+        msg_list.append("volume over year average ratio : %s" % self.ratio)
+        return "\n".join(msg_list)
+
+class Strategy_Stoch_Pop_Breakout(Selection_Strategy):
+    def is_triggered(self):
+        self.k_d = tell_me_current_kd_2(self.stock_quote)
+        # conditions to notify
+        # 1. ks_14<80
+        # 2. volume > year_volume_avg
+        triggered = False
+        if self.k_d.ks_14 < 80:
+            self.ratio = volume_over_average_ratio(self.stock_quote, self.trading)
+            if self.ratio > 1.0:
+                triggered = True
+        return triggered
+    
+    def notify_message(self):
+        msg_list = []
+        msg_list.append("*** stock symbol (%s, %s)***" % (self.stock_item.symbol, self.stock_item.short_name))
+        msg_list.append(self.stock_quote.notify_msg())
+        msg_list.append(self.selection_stock_item.notify_msg())
+        msg_list.append(self.k_d.notify_msg())
+        msg_list.append(self.strategy_param.notify_msg())
+        msg_list.append(self.trading.notify_msg())
+        msg_list.append("volume over year average ratio : %s" % self.ratio)
+        return "\n".join(msg_list)
+
+class Strategy_Stoch_Drop_Breakout(Selection_Strategy):
+    def is_triggered(self):
+        self.k_d = tell_me_current_kd_2(self.stock_quote)
+        # conditions to notify
+        # 1. ks_14>20
+        # 2. volume > year_volume_avg
+        triggered = False
+        if self.k_d.ks_14 > 20:
+            self.ratio = volume_over_average_ratio(self.stock_quote, self.trading)
+            if self.ratio > 1.0:
+                triggered = True
+        return triggered
+    
+    def notify_message(self):
+        msg_list = []
+        msg_list.append("*** stock symbol (%s, %s)***" % (self.stock_item.symbol, self.stock_item.short_name))
+        msg_list.append(self.stock_quote.notify_msg())
+        msg_list.append(self.selection_stock_item.notify_msg())
+        msg_list.append(self.k_d.notify_msg())
+        msg_list.append(self.strategy_param.notify_msg())
+        msg_list.append(self.trading.notify_msg())
+        msg_list.append("volume over year average ratio : %s" % self.ratio)
+        return "\n".join(msg_list)
+
+class Strategy_Stoch_Golden_Cross_Watch(Selection_Strategy):
+    #stoch_golden_cross_watch
+    def is_triggered(self):
+        self.k_d = tell_me_current_kd_2(self.stock_quote)
+        # conditions to notify
+        # 1. ks_14 > da_14
+        # 2. volume > year_volume_avg
+        triggered = False
+        if self.k_d.ks_14 > self.k_d.da_14:
+            self.ratio = volume_over_average_ratio(self.stock_quote, self.trading)
+            if self.ratio > 1.0:
+                triggered = True
+        return triggered
+    
+    def notify_message(self):
+        msg_list = []
+        msg_list.append("*** stock symbol (%s, %s)***" % (self.stock_item.symbol, self.stock_item.short_name))
+        msg_list.append(self.stock_quote.notify_msg())
+        msg_list.append(self.selection_stock_item.notify_msg())
+        msg_list.append(self.k_d.notify_msg())
+        msg_list.append(self.strategy_param.notify_msg())
+        msg_list.append(self.trading.notify_msg())
+        msg_list.append("volume over year average ratio : %s" % self.ratio)
+        return "\n".join(msg_list)
+
+class Strategy_Stoch_Death_Cross_Watch(Selection_Strategy):
+    #stoch_golden_cross_watch
+    def is_triggered(self):
+        self.k_d = tell_me_current_kd_2(self.stock_quote)
+        # conditions to notify
+        # 1. ks_14 < da_14
+        # 2. volume > year_volume_avg
+        triggered = False
+        if self.k_d.ks_14 < self.k_d.da_14:
+            self.ratio = volume_over_average_ratio(self.stock_quote, self.trading)
+            if self.ratio > 1.0:
+                triggered = True
+        return triggered
+    
+    def notify_message(self):
+        msg_list = []
+        msg_list.append("*** stock symbol (%s, %s)***" % (self.stock_item.symbol, self.stock_item.short_name))
+        msg_list.append(self.stock_quote.notify_msg())
+        msg_list.append(self.selection_stock_item.notify_msg())
+        msg_list.append(self.k_d.notify_msg())
+        msg_list.append(self.strategy_param.notify_msg())
+        msg_list.append(self.trading.notify_msg())
+        msg_list.append("volume over year average ratio : %s" % self.ratio)
+        return "\n".join(msg_list)
+SELECTION_STRATEGY_DICT={ 'stoch_pop_watch' : Strategy_Stoch_Pop_Watch,
+                         'stoch_drop_watch' : Strategy_Stoch_Drop_Watch,
+                         'stoch_pop_breakout': Strategy_Stoch_Pop_Breakout,
+                         'stoch_drop_breakout': Strategy_Stoch_Drop_Breakout,
+                         'stoch_pop_breakout2': Strategy_Stoch_Pop_Breakout,
+                         'stoch_drop_breakout2': Strategy_Stoch_Drop_Breakout,
+                         'stoch_pop_breakout3': Strategy_Stoch_Pop_Breakout,
+                         'stoch_drop_breakout3': Strategy_Stoch_Drop_Breakout,
+                         'stoch_cross_bull_level_watch': Strategy_Stoch_Drop_Breakout,
+                         'stoch_cross_bull_level': Strategy_Stoch_Drop_Watch,
+                         'stoch_cross_bear_level_watch': Strategy_Stoch_Pop_Breakout,
+                         'stoch_cross_bear_level': Strategy_Stoch_Pop_Watch,
+                         'stoch_golden_cross_watch': Strategy_Stoch_Golden_Cross_Watch,
+                         'stoch_golden_cross':Strategy_Stoch_Death_Cross_Watch,
+                         'stoch_death_cross_watch':Strategy_Stoch_Death_Cross_Watch,
+                         'stoch_death_cross':Strategy_Stoch_Golden_Cross_Watch,
+                         }
+
 class Strategy_Plot:
     def __init__(self, model_instance):
         self.model_instance = model_instance
@@ -984,7 +1181,7 @@ def tell_me_current_smoothed_14k(stock_symbol, current_price, max_price=None, mi
     smoothed_14k = round((k1 + k2 + k3) / 3 , 2)
     return smoothed_14k
     
-def tell_me_current_kd(stock_symbol, current_price, max_price=None, min_price=None):
+def _tell_me_current_kd(stock_symbol, current_price, max_price=None, min_price=None):
     LOOK_BACK_PERIOD = 70
     stock = Stock_Item.objects.get(symbol=stock_symbol)
     trading_entries = stock.twse_trading_list.all().order_by('-trading_date')[:LOOK_BACK_PERIOD + 3]
@@ -1014,6 +1211,14 @@ def tell_me_current_kd(stock_symbol, current_price, max_price=None, min_price=No
     ks_14 = ks_14_arr[0]
     da_14 = da_14_arr[0]
     return (ks_70, da_70, ks_14, da_14)
+
+def tell_me_current_kd_2(stock_quote):
+    stock_symbol = stock_quote.symbol
+    current_price = stock_quote.closing_price
+    max_price = stock_quote.highest_price
+    min_price = stock_quote.lowest_price
+    (ks_70, da_70, ks_14, da_14) = _tell_me_current_kd(stock_symbol, current_price, max_price, min_price)
+    return K_D(symbol=stock_symbol, stock_quote=stock_quote, ks_70=ks_70, da_70=da_70, ks_14=ks_14, da_14=da_14)
     
 def get_stock_realtime_quote(symbol):
     tdate = datetime.datetime.today().date().strftime('%Y%m%d')
@@ -1052,10 +1257,33 @@ def get_stock_realtime_quote(symbol):
         raise Exception(result) 
     except:
         raise
+class K_D:  
+    # (symbol, stock_quote, ks_70, da_70, ks_14, da_14)
+    # end_date format : eg. '20150401'
+    def __init__(self, symbol=None, stock_quote=None, ks_70=None, da_70=None, ks_14=None, da_14=None):
+        self.symbol = symbol
+        self.stock_quote = stock_quote
+        self.ks_70 = ks_70
+        self.da_70 = da_70
+        self.ks_14 = ks_14
+        self.da_14 = da_14
+        
+    def __repr__(self):
+        return 'Stock_Quote(symbol=%s, stock_quote=%s, ks_70=%s, da_70=%s, ks_14=%s, da_14=%s)' % (self.symbol,
+                                                                                                   self.stock_quote,
+                                                                                                    self.ks_70,
+                                                                                                    self.da_70,
+                                                                                                    self.ks_14,
+                                                                                                    self.da_14)
+    def notify_msg(self):
+        return  'Realtime K/D: ks_70=%s, da_70=%s, ks_14=%s, da_14=%s)' % (self.ks_70,
+                                                                            self.da_70,
+                                                                            self.ks_14,
+                                                                            self.da_14)             
 class Stock_Quote:  
     
     # end_date format : eg. '20150401'
-    def __init__(self, symbol=None, trading_date=None,  trading_time=None, opening_price=None, lowest_price=None, highest_price=None, closing_price=None, trade_volume=None):
+    def __init__(self, symbol=None, trading_date=None, trading_time=None, opening_price=None, lowest_price=None, highest_price=None, closing_price=None, trade_volume=None):
         self.symbol = symbol
         self.trading_date = trading_date
         self.trading_time = trading_time
@@ -1066,19 +1294,26 @@ class Stock_Quote:
         self.trade_volume = trade_volume
         
     def __repr__(self):
-        return 'Stock_Quote(symbol=%s, trading_date=%s, trading_time=%s, opening_price=%s, lowest_price=%s, highest_price=%s, closing_price=%s, trade_volume=%s)' % (self.symbol, 
-                                                            self.trading_date, 
-                                                            self.trading_time, 
-                                                            self.opening_price, 
-                                                            self.lowest_price, 
-                                                            self.highest_price, 
-                                                            self.closing_price, 
-                                                            self.trade_volume)                                                       
+        return 'Stock_Quote(symbol=%s, trading_date=%s, trading_time=%s, opening_price=%s, lowest_price=%s, highest_price=%s, closing_price=%s, trade_volume=%s)' % (self.symbol,
+                                                            self.trading_date,
+                                                            self.trading_time,
+                                                            self.opening_price,
+                                                            self.lowest_price,
+                                                            self.highest_price,
+                                                            self.closing_price,
+                                                            self.trade_volume)     
+    def notify_msg(self):
+        return  'Realtime quote: trading_time=%s, opening_price=%s, lowest_price=%s, highest_price=%s, closing_price=%s, trade_volume=%s(x1000)' % (self.trading_time,
+                                                            self.opening_price,
+                                                            self.lowest_price,
+                                                            self.highest_price,
+                                                            self.closing_price,
+                                                            self.trade_volume)                                                  
     
 def get_multi_stock_realtime_quote(symbol_list):
-    # tdate = datetime.datetime.today().date().strftime('%Y%m%d')
+    tdate = datetime.datetime.today().date().strftime('%Y%m%d')
     if not symbol_list: return None
-    tdate = '20150508'
+    #tdate = '20150508'
     originUrl = 'http://mis.twse.com.tw/stock/fibest.jsp?stock=%s' % 't00'
     sub_path_list = []
     for symbol in symbol_list:
@@ -1098,22 +1333,25 @@ def get_multi_stock_realtime_quote(symbol_list):
         httpResponse.encoding = "utf-8"
         # print httpResponse.json
         json_data = httpResponse.json()
-        msgArray = json_data['msgArray']
-        if len(msgArray) > 0:
-            result_list=[]
-            for item in msgArray:
-                sq=Stock_Quote()
-                sq.symbol = item['c']
-                sq.opening_price = float(item['o'])
-                sq.lowest_price = float(item['l'])
-                sq.highest_price = float(item['h'])
-                sq.closing_price = float(item['z'])
-                sq.trade_volume = float(item['v'])
-                sq.trading_date = item['d']
-                sq.trading_time = item['t']
-                result_list.append(sq)
-                print sq
-            return result_list
+        # print json_data
+        if 'msgArray' in json_data:
+            msgArray = json_data['msgArray']
+            if len(msgArray) > 0:
+                result_dict = {}
+                for item in msgArray:
+                    sq = Stock_Quote()
+                    sq.symbol = item['c']
+                    sq.opening_price = float(item['o'])
+                    sq.lowest_price = float(item['l'])
+                    sq.highest_price = float(item['h'])
+                    sq.closing_price = float(item['z'])
+                    sq.trade_volume = float(item['v'])
+                    sq.trading_date = item['d']
+                    sq.trading_time = item['t']
+                    result_dict[sq.symbol] = sq
+                return result_dict
+            else:
+                return None
         else:
             return None
     except requests.HTTPError, e:
@@ -1124,3 +1362,6 @@ def get_multi_stock_realtime_quote(symbol_list):
         raise Exception(result) 
     except:
         raise
+
+def chunker(seq, size):
+    return (seq[pos:pos + size] for pos in xrange(0, len(seq), size))
